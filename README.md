@@ -19,7 +19,7 @@ This repository is a ComfyUI integration layer. It does not modify the ControlFo
 
 If this node helps your workflow, please consider giving a star &#11088; to this repository and the original [ControlFoley](https://github.com/xiaomi-research/controlfoley) repository.
 
-## Features
+## ✨ Features
 
 - Load the public ControlFoley source tree and Hugging Face weights from local paths, with missing weights downloaded on demand.
 - Generate Foley audio from video input, text prompts, or reference audio conditioning.
@@ -30,7 +30,7 @@ If this node helps your workflow, please consider giving a star &#11088; to this
 - Support fixed seeds, custom duration, inference steps, CFG scale, CLIP masking, staged encoder offload, encoder frame-batch multipliers, and video feature caching.
 - Expose optional encoder compilation, a `low_vram` T2A/TTA path, and an unload node for memory-constrained runs.
 
-## Installation
+## 🚀 Installation
 
 Clone this custom node into `ComfyUI/custom_nodes`:
 
@@ -58,7 +58,7 @@ cd /path/to/ComfyUI
 python main.py --listen 0.0.0.0 --port 8188
 ```
 
-## Quick Start
+## ⚡ Quick Start
 
 1. Install ComfyUI.
 2. Clone this custom node into `ComfyUI/custom_nodes`.
@@ -70,7 +70,7 @@ python main.py --listen 0.0.0.0 --port 8188
 8. Place input videos and reference audio in `ComfyUI/input`, or edit the workflow paths.
 9. Run the workflow and check `ComfyUI/output/controlfoley`.
 
-## ControlFoley Weights
+## 📦 ControlFoley Weights
 
 This repository does not include ControlFoley model weights. During `ControlFoley Model Loader` or `ControlFoley Dependencies Loader`, missing weights are downloaded from Hugging Face into the configured `model_weights_dir`.
 
@@ -101,7 +101,7 @@ The node also prefetches Hugging Face model dependencies used by the public Cont
 
 `controlfoley_source_dir` should point to the cloned ControlFoley repository. `model_weights_dir` can point to an existing local weight directory or to a writable directory for automatic downloads.
 
-## Folder Structure
+## 🗂️ Folder Structure
 
 ```text
 comfyui-controlfoley/
@@ -130,7 +130,7 @@ comfyui-controlfoley/
 
 Do not commit ControlFoley weights, Hugging Face caches, ComfyUI outputs, or local runtime files.
 
-## Available Nodes
+## 🧩 Available Nodes
 
 - **ControlFoley Simple Generate**: one-node path for loading the model and generating audio in the same node.
 - **ControlFoley Dependencies Loader**: validates the public ControlFoley source tree, downloads missing ControlFoley weights, and prefetches known Hugging Face dependencies.
@@ -143,7 +143,7 @@ Do not commit ControlFoley weights, Hugging Face caches, ComfyUI outputs, or loc
 - **ControlFoley Video-Audio Muxer**: writes an MP4 with generated audio replacing the original audio track.
 - **ControlFoley Model Unloader**: releases cached model objects and clears CUDA cache.
 
-## Demo Workflows
+## 🧪 Demo Workflows
 
 Workflow templates are in `examples/workflows`:
 
@@ -184,7 +184,7 @@ Native ComfyUI inputs:
 
 For workflows with video input, keep both output nodes enabled: standalone `.wav` and muxed `.mp4`.
 
-## Generated Examples
+## 🎬 Generated Examples
 
 Selected generated samples are stored in `examples/generated`. Each workflow has one representative output folder with the original input files needed for comparison and the generated result files.
 
@@ -194,7 +194,7 @@ Only publish example media that has passed the repository owner's release review
 
 See `examples/generated/README.md` for demo media credits.
 
-## Input Media
+## 📥 Input Media
 
 The workflow templates expect demo input media under `ComfyUI/input/assets`. To run the bundled examples, copy the approved demo inputs from `examples/generated` into `ComfyUI/input/assets` using the names below, or edit the workflow paths.
 
@@ -210,7 +210,7 @@ examples/generated/04_tv2a_text_video/original_video.mp4 -> ComfyUI/input/assets
 
 Reference audio for AC-V2A should be 2-4 seconds. Longer audio is truncated and shorter audio is padded by the node.
 
-## Outputs
+## 📤 Outputs
 
 ComfyUI writes outputs under `ComfyUI/output`. With the default prefixes, files are written to:
 
@@ -228,7 +228,7 @@ Default workflow outputs:
 - `06_advanced_chain.wav`
 - `07_simple_generate.wav`
 
-## Low VRAM Mode
+## 🧠 Low VRAM Mode
 
 The alpha release only applies engineering-side memory options. It does not change model structure.
 
@@ -249,7 +249,7 @@ Implemented options:
 
 For V2A, TV2A, TC-V2A, and AC-V2A memory reduction, keep `low_vram=false` and use `staged_offload=true`. `low_vram=true` remains a text-only T2A/TTA path.
 
-## VRAM and Speed Benchmark
+## 📊 VRAM and Speed Benchmark
 
 See `docs/vram_speed_log.md` for recorded runs.
 
@@ -267,7 +267,7 @@ Memory guidance:
 - `low_vram=true` is intended for text-only T2A/TTA; keep it `false` for V2A, TV2A, TC-V2A, and AC-V2A.
 - Keep `num_inference_steps=25` for normal output quality. Lower step counts mainly reduce runtime, not peak VRAM, and are only useful for quick internal smoke checks.
 
-## Known Issues
+## ⚠️ Known Issues
 
 See `docs/known_issues.md`.
 
@@ -278,7 +278,7 @@ Important alpha limitations:
 - `ControlFoley Video-Audio Muxer` currently supports replace-original-audio mode only; mix mode is planned.
 - The public ControlFoley inference path is CUDA-only in this node.
 
-## License
+## 📄 License
 
 - ComfyUI custom node code: Apache 2.0.
 - Original ControlFoley code: Apache 2.0.

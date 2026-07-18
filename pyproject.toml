@@ -1,0 +1,43 @@
+[project]
+name = "comfyui-controlfoley"
+description = "ComfyUI nodes and full-task workflows for ControlFoley, supporting V2A, TV2A, TC-V2A, AC-V2A, and T2A."
+version = "0.1.0"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+dependencies = [
+  "av>=14.0.1",
+  "colorlog>=6.9.0",
+  "einops>=0.8.0",
+  "huggingface-hub>=0.26.2",
+  "laion-clap>=1.1.6",
+  "librosa>=0.11.0",
+  "nnAudio>=0.3.3",
+  "numpy>=1.23.5",
+  "omegaconf>=2.3.0",
+  "open-clip-torch>=2.29.0",
+  "pillow",
+  "safetensors>=0.7.0",
+  "scipy>=1.15.3",
+  "timm>=1.0.25",
+  "torchdiffeq>=0.2.5",
+  "torchlibrosa>=0.1.0",
+  "transformers>=4.38.2,<5",
+  "julius>=0.2.8",
+  "flashy>=0.0.2",
+  "dora-search>=0.1.12",
+  "submitit>=1.5.4",
+  "treetable>=0.2.6",
+  "retrying>=1.4.2",
+  "num2words>=0.5.14",
+  "spacy>=3.8.7"
+]
+
+[project.urls]
+Repository = "https://github.com/YJX-Research/comfyui-controlfoley-official"
+ControlFoley = "https://github.com/xiaomi-research/controlfoley"
+Weights = "https://huggingface.co/YJX-Xiaomi/ControlFoley"
+
+[tool.comfy]
+PublisherId = "sound"
+DisplayName = "comfyui-controlfoley"
+Icon = ""

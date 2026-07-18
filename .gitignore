@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Environments
+.venv/
+venv/
+env/
+conda/
+*.egg-info/
+
+# ComfyUI / runtime
+output/
+input/
+temp/
+logs/
+*.log
+comfyui.pid
+
+# Model weights / large assets
+models/
+checkpoints/
+weights/
+model_weights/
+hf_assets/
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+*.bin
+
+# Media outputs
+*.wav
+*.flac
+*.mp3
+*.mp4
+*.mov
+*.avi
+
+# Keep docs and workflows tracked. Add approved demo media explicitly with
+# `git add -f` after release review.
+!examples/inputs/README.md
+!examples/workflows/*.json
+!examples/generated/
+!examples/generated/**
+examples/generated/**/*.wav
+examples/generated/**/*.flac
+examples/generated/**/*.mp3
+examples/generated/**/*.mp4
+examples/generated/**/*.mov
+examples/generated/**/*.avi
+!examples/generated/**/*.md
+!examples/generated/**/*.txt
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local scratch exports
+local_*

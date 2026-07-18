@@ -1,0 +1,225 @@
+{
+  "last_node_id": 5,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadControlFoleyModel",
+      "pos": [
+        80,
+        80
+      ],
+      "size": [
+        360,
+        190
+      ],
+      "widgets_values": [
+        "path/to/controlfoley",
+        "path/to/model_weights",
+        "large_44k",
+        "auto",
+        "bf16",
+        false,
+        false
+      ],
+      "outputs": [
+        {
+          "name": "controlfoley_model",
+          "type": "CONTROLFOLEY_MODEL",
+          "links": [
+            1,
+            5
+          ]
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "LoadControlFoleyVideo",
+      "pos": [
+        80,
+        330
+      ],
+      "size": [
+        320,
+        100
+      ],
+      "widgets_values": [
+        "assets/tv2a_video.mp4",
+        30.0
+      ],
+      "outputs": [
+        {
+          "name": "controlfoley_video",
+          "type": "CONTROLFOLEY_VIDEO",
+          "links": [
+            2,
+            6
+          ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "ControlFoleyGenerate",
+      "pos": [
+        520,
+        130
+      ],
+      "size": [
+        430,
+        270
+      ],
+      "widgets_values": [
+        "Footsteps on gravel",
+        "",
+        30.0,
+        42,
+        "25",
+        4.5,
+        false,
+        false,
+        true,
+        "8",
+        "8",
+        "",
+        24.0
+      ],
+      "inputs": [
+        {
+          "name": "controlfoley_model",
+          "type": "CONTROLFOLEY_MODEL",
+          "link": 1
+        },
+        {
+          "name": "video",
+          "type": "CONTROLFOLEY_VIDEO",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            3,
+            4
+          ]
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "SaveControlFoleyAudio",
+      "pos": [
+        1020,
+        120
+      ],
+      "size": [
+        330,
+        120
+      ],
+      "widgets_values": [
+        "controlfoley/04_tv2a_text_video",
+        "wav"
+      ],
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 3
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "MuxControlFoleyAudioToVideo",
+      "pos": [
+        1020,
+        320
+      ],
+      "size": [
+        360,
+        150
+      ],
+      "widgets_values": [
+        "controlfoley/04_tv2a_text_video.mp4",
+        "replace"
+      ],
+      "mode": 2,
+      "inputs": [
+        {
+          "name": "controlfoley_model",
+          "type": "CONTROLFOLEY_MODEL",
+          "link": 5
+        },
+        {
+          "name": "video",
+          "type": "CONTROLFOLEY_VIDEO",
+          "link": 6
+        },
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 4
+        }
+      ]
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      3,
+      0,
+      "CONTROLFOLEY_MODEL"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      1,
+      "CONTROLFOLEY_VIDEO"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "AUDIO"
+    ],
+    [
+      4,
+      3,
+      0,
+      5,
+      2,
+      "AUDIO"
+    ],
+    [
+      5,
+      1,
+      0,
+      5,
+      0,
+      "CONTROLFOLEY_MODEL"
+    ],
+    [
+      6,
+      2,
+      0,
+      5,
+      1,
+      "CONTROLFOLEY_VIDEO"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "info": "04 TV2A Text Video: text + video to audio demo using ComfyUI/input/assets/tv2a_video.mp4 and prompt \"Footsteps on gravel\"."
+  },
+  "version": 0.4
+}

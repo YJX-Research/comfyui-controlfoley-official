@@ -1,14 +1,23 @@
 # comfyui-controlfoley
 
-ComfyUI nodes and full-task workflows for ControlFoley
+<p>
+  <a href="https://github.com/YJX-Research/comfyui-controlfoley-official"><img alt="ComfyUI custom node" src="https://img.shields.io/badge/ComfyUI-custom%20node-111111"></a>
+  <a href="https://github.com/xiaomi-research/controlfoley"><img alt="ControlFoley" src="https://img.shields.io/badge/ControlFoley-official%20integration-2f80ed"></a>
+  <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
+  <img alt="License" src="https://img.shields.io/badge/code%20license-Apache--2.0-green">
+  <img alt="Weights license" src="https://img.shields.io/badge/weights-CC%20BY--NC%204.0-orange">
+</p>
 
-ComfyUI custom nodes for running [ControlFoley](https://github.com/xiaomi-research/controlfoley), Xiaomi Research's video-to-audio and controllable Foley generation project.
+Official ComfyUI custom nodes and full-task workflows for [ControlFoley](https://github.com/xiaomi-research/controlfoley), Xiaomi Research's video-to-audio and controllable Foley generation project.
+
+- Run V2A, TV2A, TC-V2A, AC-V2A, and T2A workflows directly in ComfyUI.
+- Load the public ControlFoley source tree and download missing Hugging Face weights on demand.
+- Save generated audio as WAV/FLAC and mux generated audio back into video.
+- Use bundled workflow templates and release-reviewed demo media for quick inspection.
 
 This repository is a ComfyUI integration layer. It does not modify the ControlFoley model architecture, retrain models, or include ControlFoley model weights.
 
-When weights are missing, the loader downloads the required Hugging Face files during model loading.
-
-If this node helps your workflow, please consider giving a star ⭐️ to this repository and the original [ControlFoley](https://github.com/xiaomi-research/controlfoley) repository.
+If this node helps your workflow, please consider giving a star &#11088; to this repository and the original [ControlFoley](https://github.com/xiaomi-research/controlfoley) repository.
 
 ## Features
 

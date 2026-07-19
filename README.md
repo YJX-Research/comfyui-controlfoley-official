@@ -10,7 +10,8 @@
 
 Official ComfyUI custom nodes and full-task workflows for [ControlFoley](https://github.com/xiaomi-research/controlfoley), Xiaomi Research's controllable video-to-audio generation project.
 
-- Run V2A, TV2A, TC-V2A, AC-V2A, and T2A workflows directly in ComfyUI.
+- Generate sound effects / Foley audio that follows the visual content of a video, with optional control from text prompts or reference audio.
+- Run video-to-audio (V2A), text-to-audio (T2A), text-guided video-to-audio (TV2A/TC-V2A), and reference-audio-guided video-to-audio (AC-V2A) workflows directly in ComfyUI.
 - Load the public ControlFoley source tree and download missing Hugging Face weights on demand.
 - Save generated audio as WAV/FLAC and mux generated audio back into video.
 - Use bundled workflow templates and release-reviewed demo media for quick inspection.
@@ -22,7 +23,8 @@ This repository is a ComfyUI integration layer. It does not modify the ControlFo
 ## ✨ Features
 
 - Load the public ControlFoley source tree and Hugging Face weights from local paths, with missing weights downloaded on demand.
-- Generate audio for V2A, TV2A, TC-V2A, AC-V2A, and T2A workflows.
+- Generate audio from video content, guide the generated sound with text prompts, or condition it on a reference audio clip.
+- Support video-to-audio, text-to-audio, text-guided video-to-audio, and reference-audio-guided video-to-audio workflows, with task abbreviations shown in the bundled examples.
 - Use either a simple one-node generator or an advanced reusable chain for preloading, dependency download, Torch compile, and generation.
 - Save generated audio as WAV or FLAC.
 - Mux generated audio back into the source video as MP4 using replace-original-audio mode.

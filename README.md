@@ -8,21 +8,21 @@
   <img alt="Weights license" src="https://img.shields.io/badge/weights-CC%20BY--NC%204.0-orange">
 </p>
 
-Official ComfyUI custom nodes and full-task workflows for [ControlFoley](https://github.com/xiaomi-research/controlfoley), Xiaomi Research's video-to-audio and controllable Foley generation project.
+Official ComfyUI custom nodes and full-task workflows for [ControlFoley](https://github.com/xiaomi-research/controlfoley), Xiaomi Research's controllable video-to-audio generation project.
 
 - Run V2A, TV2A, TC-V2A, AC-V2A, and T2A workflows directly in ComfyUI.
 - Load the public ControlFoley source tree and download missing Hugging Face weights on demand.
 - Save generated audio as WAV/FLAC and mux generated audio back into video.
 - Use bundled workflow templates and release-reviewed demo media for quick inspection.
 
-This repository is a ComfyUI integration layer. It does not modify the ControlFoley model architecture, retrain models, or include ControlFoley model weights.
+> ⭐ If this ComfyUI node is useful for your workflow, please consider starring both this repository and the original [ControlFoley](https://github.com/xiaomi-research/controlfoley) repository.
 
-If this node helps your workflow, please consider giving a star &#11088; to this repository and the original [ControlFoley](https://github.com/xiaomi-research/controlfoley) repository.
+This repository is a ComfyUI integration layer. It does not modify the ControlFoley model architecture, retrain models, or include ControlFoley model weights.
 
 ## ✨ Features
 
 - Load the public ControlFoley source tree and Hugging Face weights from local paths, with missing weights downloaded on demand.
-- Generate Foley audio from video input, text prompts, or reference audio conditioning.
+- Generate audio for V2A, TV2A, TC-V2A, AC-V2A, and T2A workflows.
 - Use either a simple one-node generator or an advanced reusable chain for preloading, dependency download, Torch compile, and generation.
 - Save generated audio as WAV or FLAC.
 - Mux generated audio back into the source video as MP4 using replace-original-audio mode.

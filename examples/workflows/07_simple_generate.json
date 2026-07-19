@@ -30,17 +30,18 @@
         "bf16",
         false,
         false,
-        "A bird sings melodically in a forest.",
+        "A bird sings melodically in a forest",
         "",
         10.0,
         42,
+        "fixed",
         "25",
         4.5,
         true,
         false,
         true,
-        "4",
-        "4",
+        "8",
+        "8",
         "",
         24.0,
         true,
@@ -66,7 +67,7 @@
         }
       ],
       "widgets_values": [
-        "controlfoley/07_simple_generate",
+        "controlfoley/simple_generate_prompt_output",
         "wav"
       ]
     }

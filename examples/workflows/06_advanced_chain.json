@@ -128,10 +128,11 @@
         }
       ],
       "widgets_values": [
-        "A bird sings melodically in a forest.",
+        "A bird sings melodically in a forest",
         "",
         10.0,
         42,
+        "fixed",
         "25",
         4.5,
         true,
@@ -164,7 +165,7 @@
         }
       ],
       "widgets_values": [
-        "controlfoley/06_advanced_chain",
+        "controlfoley/advanced_chain_prompt_output",
         "wav"
       ]
     },

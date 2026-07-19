@@ -41,20 +41,11 @@ hf_assets/
 *.mov
 *.avi
 
-# Keep docs and workflows tracked. Add approved demo media explicitly with
-# `git add -f` after release review.
+# Keep docs, workflows, and approved generated demo media tracked.
 !examples/inputs/README.md
 !examples/workflows/*.json
 !examples/generated/
 !examples/generated/**
-examples/generated/**/*.wav
-examples/generated/**/*.flac
-examples/generated/**/*.mp3
-examples/generated/**/*.mp4
-examples/generated/**/*.mov
-examples/generated/**/*.avi
-!examples/generated/**/*.md
-!examples/generated/**/*.txt
 
 # OS
 .DS_Store

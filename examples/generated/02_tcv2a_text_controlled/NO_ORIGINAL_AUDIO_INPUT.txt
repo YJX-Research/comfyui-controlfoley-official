@@ -1,1 +1,1 @@
-This text-only workflow has no original input audio/video. Output duration is set to the 30s cap.
+This workflow uses a video input and text prompt, but no reference audio input.

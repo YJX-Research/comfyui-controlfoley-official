@@ -36,6 +36,10 @@ MAX_GENERATION_DURATION = 30.0
 FIXED_STEP_SENTINEL = "fixed"
 DEFAULT_INFERENCE_STEPS = 25
 VIDEO_CACHE_MAX_ITEMS = 2
+DEFAULT_CONTROLFOLEY_SOURCE_DIR = "path/to/controlfoley"
+DEFAULT_MODEL_WEIGHTS_DIR = "path/to/model_weights"
+DEFAULT_DEMO_VIDEO_PATH = "assets/v2a_video.mp4"
+DEFAULT_TEXT_PROMPT = "A bird sings melodically in a forest"
 
 
 def _register_model_folder() -> None:
@@ -664,8 +668,8 @@ class LoadControlFoleyDependencies:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "controlfoley_source_dir": ("STRING", {"default": "path/to/controlfoley"}),
-                "model_weights_dir": ("STRING", {"default": "path/to/model_weights"}),
+                "controlfoley_source_dir": ("STRING", {"default": DEFAULT_CONTROLFOLEY_SOURCE_DIR}),
+                "model_weights_dir": ("STRING", {"default": DEFAULT_MODEL_WEIGHTS_DIR}),
                 "low_vram": ("BOOLEAN", {"default": False}),
                 "auto_download": ("BOOLEAN", {"default": True}),
             }
@@ -695,8 +699,8 @@ class LoadControlFoleyModel:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "controlfoley_source_dir": ("STRING", {"default": "path/to/controlfoley"}),
-                "model_weights_dir": ("STRING", {"default": "path/to/model_weights"}),
+                "controlfoley_source_dir": ("STRING", {"default": DEFAULT_CONTROLFOLEY_SOURCE_DIR}),
+                "model_weights_dir": ("STRING", {"default": DEFAULT_MODEL_WEIGHTS_DIR}),
                 "variant": (["large_44k"],),
                 "device": (["auto", "cuda"], {"default": "auto"}),
                 "precision": (["bf16", "fp16", "fp32"], {"default": "bf16"}),
@@ -835,14 +839,14 @@ class ControlFoleySimpleGenerate:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "controlfoley_source_dir": ("STRING", {"default": "path/to/controlfoley"}),
-                "model_weights_dir": ("STRING", {"default": "path/to/model_weights"}),
+                "controlfoley_source_dir": ("STRING", {"default": DEFAULT_CONTROLFOLEY_SOURCE_DIR}),
+                "model_weights_dir": ("STRING", {"default": DEFAULT_MODEL_WEIGHTS_DIR}),
                 "variant": (["large_44k"],),
                 "device": (["auto", "cuda"], {"default": "auto"}),
                 "precision": (["bf16", "fp16", "fp32"], {"default": "bf16"}),
                 "low_vram": ("BOOLEAN", {"default": False}),
                 "compile_encoders": ("BOOLEAN", {"default": False}),
-                "prompt": ("STRING", {"default": "", "multiline": True}),
+                "prompt": ("STRING", {"default": DEFAULT_TEXT_PROMPT, "multiline": True}),
                 "negative_prompt": ("STRING", {"default": "", "multiline": True}),
                 "duration": ("FLOAT", {"default": DEFAULT_TEXT_ONLY_DURATION, "min": MIN_VIDEO_DURATION, "max": MAX_GENERATION_DURATION, "step": 0.5, "tooltip": "Text-only generation uses 10s by default. Video generation follows input length up to 30s."}),
                 "seed": ("INT", {"default": 42, "min": 0, "max": 0xFFFFFFFF}),
@@ -904,7 +908,7 @@ class LoadControlFoleyVideo:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "video_path": ("STRING", {"default": "examples/inputs/v2a_basic.mp4"}),
+                "video_path": ("STRING", {"default": DEFAULT_DEMO_VIDEO_PATH}),
                 "duration": ("FLOAT", {"default": MAX_GENERATION_DURATION, "min": MIN_VIDEO_DURATION, "max": MAX_GENERATION_DURATION, "step": 0.5, "tooltip": "Upper limit for video generation. The actual output follows the input video length up to 30s."}),
             }
         }
@@ -1128,18 +1132,30 @@ class SaveControlFoleyAudio:
     OUTPUT_NODE = True
     CATEGORY = CATEGORY
 
+    @classmethod
+    def IS_CHANGED(cls, audio, filename_prefix, format):
+        return time.time_ns()
+
     def save(self, audio, filename_prefix, format):
         import soundfile as sf
         out_dir = _output_dir()
         relative = _safe_path(filename_prefix, "controlfoley/output", f".{format}")
-        path = out_dir / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
+        full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
+            str(relative.with_suffix("")), str(out_dir)
+        )
+        path = Path(full_output_folder) / f"{filename}_{counter:05}_.{format}"
         waveform = audio["waveform"]
         if waveform.ndim == 3:
             waveform = waveform[0]
         array = waveform.detach().cpu().transpose(0, 1).numpy()
         sf.write(str(path), array, int(audio["sample_rate"]))
-        return (audio, {"path": path, "sample_rate": int(audio["sample_rate"])}, str(path))
+        saved_audio = dict(audio)
+        saved_audio["stem"] = str(path.with_suffix(""))
+        return (
+            saved_audio,
+            {"path": path, "sample_rate": int(audio["sample_rate"]), "stem": str(path.with_suffix(""))},
+            str(path),
+        )
 
 
 class MuxControlFoleyAudioToVideo:
@@ -1161,6 +1177,10 @@ class MuxControlFoleyAudioToVideo:
     OUTPUT_NODE = True
     CATEGORY = CATEGORY
 
+    @classmethod
+    def IS_CHANGED(cls, controlfoley_model, video, audio, output_filename, mode):
+        return time.time_ns()
+
     def mux(self, controlfoley_model, video, audio, output_filename, mode):
         if mode != "replace":
             raise NotImplementedError("First release supports replace original audio only. Mix is planned.")
@@ -1177,8 +1197,15 @@ class MuxControlFoleyAudioToVideo:
         if video_info is None:
             video_info = runtime.inference_utils.load_video(video_path, duration, load_all_frames=True)
             _cache_video(video_path, video_info, True)
-        out_path = _output_dir() / _safe_path(output_filename, "controlfoley/output.mp4", ".mp4")
-        out_path.parent.mkdir(parents=True, exist_ok=True)
+        relative = _safe_path(output_filename, "controlfoley/output.mp4", ".mp4")
+        audio_stem = audio.get("stem") if isinstance(audio, dict) else None
+        if audio_stem:
+            out_path = Path(audio_stem).with_suffix(".mp4")
+        else:
+            full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
+                str(relative.with_suffix("")), str(_output_dir())
+            )
+            out_path = Path(full_output_folder) / f"{filename}_{counter:05}_.mp4"
         runtime.inference_utils.make_video(video_info, out_path, waveform.cpu(), int(audio["sample_rate"]))
         return ({"path": out_path}, str(out_path))
 

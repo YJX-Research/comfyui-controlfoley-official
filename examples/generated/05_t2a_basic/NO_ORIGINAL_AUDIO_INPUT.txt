@@ -1,1 +1,1 @@
-This text-only workflow has no original input audio/video. Output duration is set to the 30s cap.
+This text-only workflow has no original input audio/video. Output duration is set to 10 seconds.

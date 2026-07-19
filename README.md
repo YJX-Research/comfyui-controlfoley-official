@@ -48,14 +48,14 @@ This repository is published at `YJX-Research/comfyui-controlfoley-official`; th
 Clone the public ControlFoley repository separately:
 
 ```bash
-git clone https://github.com/xiaomi-research/controlfoley /path/to/controlfoley
+git clone https://github.com/xiaomi-research/controlfoley controlfoley
 ```
 
 Start ComfyUI after installing the node:
 
 ```bash
-cd /path/to/ComfyUI
-python main.py --listen 0.0.0.0 --port 8188
+cd ComfyUI
+python main.py
 ```
 
 ## ⚡ Quick Start
@@ -67,7 +67,7 @@ python main.py --listen 0.0.0.0 --port 8188
 5. Start ComfyUI.
 6. Load a workflow from `examples/workflows`.
 7. Set `controlfoley_source_dir`; leave `model_weights_dir` as `path/to/model_weights` to use the default download directory, or set a custom local path.
-8. Place input videos and reference audio in `ComfyUI/input`, or edit the workflow paths.
+8. Place bundled input videos and reference audio in `ComfyUI/input/assets`, or edit the workflow paths.
 9. Run the workflow and check `ComfyUI/output/controlfoley`.
 
 ## 📦 ControlFoley Weights
@@ -82,7 +82,7 @@ You can still pre-download the public model release manually:
 pip install huggingface-hub
 huggingface-cli download YJX-Xiaomi/ControlFoley \
   --resume-download \
-  --local-dir /path/to/model_weights \
+  --local-dir model_weights \
   --local-dir-use-symlinks False
 ```
 
@@ -97,7 +97,7 @@ model_weights/
   ext_weights/music_speech_audioset_epoch_15_esc_89.98.pt
 ```
 
-The node also prefetches Hugging Face model dependencies used by the public ControlFoley runtime, including CLIP, BigVGAN, and the reference-audio models used outside `low_vram` mode. Download repository IDs are centralized in `model_urls.py` so mirrors or future model releases can be updated without changing node logic.
+The node also prefetches third-party Hugging Face model dependencies used by the public ControlFoley runtime, including CLIP, BigVGAN, and the reference-audio models used outside `low_vram` mode. These dependency models are fetched from their own upstream repositories instead of being treated as part of the ControlFoley weight package, so users should ensure network access or pre-cache them separately and review each upstream model's license and terms. Download repository IDs are centralized in `model_urls.py` so mirrors or future model releases can be updated without changing node logic.
 
 `controlfoley_source_dir` should point to the cloned ControlFoley repository. `model_weights_dir` can point to an existing local weight directory or to a writable directory for automatic downloads.
 
@@ -174,6 +174,18 @@ Duration behavior:
 - Text-only workflows use `10s` by default.
 - Video workflows follow the input video duration and cap generation at `30s` for long videos.
 - The `duration` field is treated as an upper limit for video workflows, not a forced output length when the input video is shorter.
+- The seed `control_after_generate` option is set to `fixed` in all bundled workflows; `num_inference_steps` is set to `25`.
+
+Bundled workflow defaults use a medium/low-VRAM preset intended to run on more GPUs before users tune for speed:
+
+- `precision=bf16`
+- `low_vram=false`
+- `compile_encoders=false`
+- `staged_offload=true`
+- `clip_batch_size_multiplier=8`
+- `sync_batch_size_multiplier=8`
+- `num_inference_steps=25`
+- `guidance_scale=4.5`
 
 Native ComfyUI inputs:
 
@@ -190,7 +202,7 @@ Selected generated samples are stored in `examples/generated`. Each workflow has
 
 Actual demo media durations are listed in each `examples/generated/*/README.txt` file.
 
-Only publish example media that has passed the repository owner's release review. Keep source attribution, usage permissions, and any required media notices with the example files.
+Only publish example media that has passed the repository owner's release review. Keep source attribution, usage permissions, and any required media notices with the example files. Runtime media outside `examples/generated` should remain uncommitted.
 
 See `examples/generated/README.md` for demo media credits.
 
@@ -201,11 +213,16 @@ The workflow templates expect demo input media under `ComfyUI/input/assets`. To 
 Suggested demo input mapping:
 
 ```text
-examples/generated/01_v2a_basic/original_video.mp4 -> ComfyUI/input/assets/v2a_video.mp4
-examples/generated/02_tcv2a_text_controlled/original_video.mp4 -> ComfyUI/input/assets/tcv2a_video.mp4
-examples/generated/03_acv2a_audio_controlled/original_video.mp4 -> ComfyUI/input/assets/acv2a_video.mp4
-examples/generated/03_acv2a_audio_controlled/original_reference_audio.wav -> ComfyUI/input/assets/acv2a_reference.wav
-examples/generated/04_tv2a_text_video/original_video.mp4 -> ComfyUI/input/assets/tv2a_video.mp4
+examples/generated/01_v2a_basic/v2a_video.mp4 -> ComfyUI/input/assets/v2a_video.mp4
+examples/generated/02_tcv2a_text_controlled/tcv2a_video.mp4 -> ComfyUI/input/assets/tcv2a_video.mp4
+examples/generated/02_tcv2a_text_controlled/prompt.txt -> prompt "thunder strike"
+examples/generated/03_acv2a_audio_controlled/acv2a_video.mp4 -> ComfyUI/input/assets/acv2a_video.mp4
+examples/generated/03_acv2a_audio_controlled/acv2a_reference.wav -> ComfyUI/input/assets/acv2a_reference.wav
+examples/generated/04_tv2a_text_video/tv2a_video.mp4 -> ComfyUI/input/assets/tv2a_video.mp4
+examples/generated/04_tv2a_text_video/prompt.txt -> prompt "skateboarding"
+examples/generated/05_t2a_basic/prompt.txt -> prompt "A bird sings melodically in a forest"
+examples/generated/06_advanced_chain/prompt.txt -> prompt "A bird sings melodically in a forest"
+examples/generated/07_simple_generate/prompt.txt -> prompt "A bird sings melodically in a forest"
 ```
 
 Reference audio for AC-V2A should be 2-4 seconds. Longer audio is truncated and shorter audio is padded by the node.
@@ -220,13 +237,15 @@ ComfyUI/output/controlfoley/
 
 Default workflow outputs:
 
-- `01_v2a_basic.wav` and `01_v2a_basic.mp4`
-- `02_tcv2a_text_controlled.wav` and `02_tcv2a_text_controlled.mp4`
-- `03_acv2a_audio_controlled.wav` and `03_acv2a_audio_controlled.mp4`
-- `04_tv2a_text_video.wav` and `04_tv2a_text_video.mp4`
-- `05_t2a_basic.wav`
-- `06_advanced_chain.wav`
-- `07_simple_generate.wav`
+- `v2a_video_output_00001_.wav` and `v2a_video_output_00001_.mp4`
+- `tcv2a_video_output_00001_.wav` and `tcv2a_video_output_00001_.mp4`
+- `acv2a_video_output_00001_.wav` and `acv2a_video_output_00001_.mp4`
+- `tv2a_video_output_00001_.wav` and `tv2a_video_output_00001_.mp4`
+- `t2a_basic_prompt_output_00001_.wav`
+- `advanced_chain_prompt_output_00001_.wav`
+- `simple_generate_prompt_output_00001_.wav`
+
+ComfyUI increments the numeric suffix on repeated runs, so the second run writes `_00002_` files instead of overwriting earlier outputs. For video workflows, the `.wav` and muxed `.mp4` from the same run share the same numeric suffix because the mux node consumes the audio output from `ControlFoley Save Audio`.
 
 ## 🧠 Low VRAM Mode
 
@@ -245,7 +264,7 @@ Implemented options:
 - `low_vram` path for text-only T2A/TTA runs.
 - `ControlFoley Model Unloader` node.
 - CUDA cache cleanup after low-VRAM generation.
-- Fixed 25-step generation in the bundled workflows.
+- Medium/low-VRAM bundled workflow defaults: `bf16`, `low_vram=false`, `staged_offload=true`, `clip_batch_size_multiplier=8`, `sync_batch_size_multiplier=8`, and 25-step generation.
 
 For V2A, TV2A, TC-V2A, and AC-V2A memory reduction, keep `low_vram=false` and use `staged_offload=true`. `low_vram=true` remains a text-only T2A/TTA path.
 
@@ -278,13 +297,13 @@ Important alpha limitations:
 - `ControlFoley Video-Audio Muxer` currently supports replace-original-audio mode only; mix mode is planned.
 - The public ControlFoley inference path is CUDA-only in this node.
 
-## 📄 License
+## 📄 License and Third-Party Assets
 
-- ComfyUI custom node code: Apache 2.0.
-- Original ControlFoley code: Apache 2.0.
-- ControlFoley model weights: CC BY-NC 4.0.
-- ControlFoley model weights are for non-commercial use only.
+- **ComfyUI custom node code**: Apache 2.0; see `LICENSE`.
+- **Original ControlFoley source code**: Apache 2.0. This repository loads a separate local clone of `xiaomi-research/controlfoley`; it does not vendor the upstream source tree.
+- **ControlFoley model weights**: CC BY-NC 4.0, non-commercial use only. The weights are not included in this repository and are downloaded or supplied separately by the user.
+- **Third-party dependency models**: downloaded or cached separately from their own upstream Hugging Face repositories. Their licenses and usage terms are not controlled by this repository.
+- **Bundled demo media**: not covered by this repository's Apache 2.0 code license. Demo media provenance and source/license notes are documented in `examples/generated/README.md` and each example folder.
+- **Generated demo outputs**: produced with ControlFoley from the bundled demo inputs and prompts. Treat them as demonstration assets subject to the model-weight license and the underlying input-media permissions.
 
-The custom node code is Apache 2.0, but the model weights are CC BY-NC 4.0 and are restricted to non-commercial use.
-
-Review the ControlFoley repository and Hugging Face model card before use.
+Review the upstream [ControlFoley repository](https://github.com/xiaomi-research/controlfoley), the [Hugging Face model card](https://huggingface.co/YJX-Xiaomi/ControlFoley), and the source licenses/terms for any bundled media before public or commercial use.

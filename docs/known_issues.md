@@ -10,12 +10,12 @@ This alpha release focuses on ComfyUI integration and reproducible inference. It
 
 ## Memory Status
 
-- `staged_offload=true` is the supported memory-saving path for V2A, TC-V2A, and AC-V2A.
+- `staged_offload=true` is the supported memory-saving path for V2A, TV2A, TC-V2A, and AC-V2A.
 - `low_vram=true` is text-only T2A/TTA mode; video and reference-audio workflows should keep `low_vram=false`.
 
 ## Weights and Downloads
 
-- Missing ControlFoley weights are downloaded from Hugging Face during user-triggered `ControlFoley Model Loader` execution.
+- Missing ControlFoley weights are downloaded from Hugging Face during user-triggered `ControlFoley Model Loader` execution, or by `ControlFoley Dependencies Loader` when `auto_download=true`.
 - The node does not download weights during import or startup.
 - The expected weight layout and default download directory order are documented in `README.md`.
 
@@ -34,5 +34,5 @@ This alpha release focuses on ComfyUI integration and reproducible inference. It
 ## Runtime Constraints
 
 - CUDA is currently required by the integrated public ControlFoley inference path.
-- CPU-only inference is not validated for this alpha release.
+- CPU/MPS inference is not supported by this node's integrated public inference path in this alpha release.
 - ComfyUI output media, local caches, and model weights should not be committed to this repository.

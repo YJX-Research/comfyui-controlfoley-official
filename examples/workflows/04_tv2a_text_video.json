@@ -1,6 +1,6 @@
 {
   "last_node_id": 5,
-  "last_link_id": 6,
+  "last_link_id": 7,
   "nodes": [
     {
       "id": 1,
@@ -71,10 +71,11 @@
         270
       ],
       "widgets_values": [
-        "Footsteps on gravel",
+        "skateboarding",
         "",
         30.0,
         42,
+        "fixed",
         "25",
         4.5,
         false,
@@ -120,7 +121,7 @@
         120
       ],
       "widgets_values": [
-        "controlfoley/04_tv2a_text_video",
+        "controlfoley/tv2a_video_output",
         "wav"
       ],
       "inputs": [
@@ -128,6 +129,25 @@
           "name": "audio",
           "type": "AUDIO",
           "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            7
+          ]
+        },
+        {
+          "name": "audio_file",
+          "type": "CONTROLFOLEY_AUDIO_FILE",
+          "links": null
+        },
+        {
+          "name": "audio_path",
+          "type": "STRING",
+          "links": null
         }
       ]
     },
@@ -143,10 +163,9 @@
         150
       ],
       "widgets_values": [
-        "controlfoley/04_tv2a_text_video.mp4",
+        "controlfoley/tv2a_video_output.mp4",
         "replace"
       ],
-      "mode": 2,
       "inputs": [
         {
           "name": "controlfoley_model",
@@ -161,7 +180,7 @@
         {
           "name": "audio",
           "type": "AUDIO",
-          "link": 4
+          "link": 7
         }
       ]
     }
@@ -192,14 +211,6 @@
       "AUDIO"
     ],
     [
-      4,
-      3,
-      0,
-      5,
-      2,
-      "AUDIO"
-    ],
-    [
       5,
       1,
       0,
@@ -214,12 +225,20 @@
       5,
       1,
       "CONTROLFOLEY_VIDEO"
+    ],
+    [
+      7,
+      4,
+      0,
+      5,
+      2,
+      "AUDIO"
     ]
   ],
   "groups": [],
   "config": {},
   "extra": {
-    "info": "04 TV2A Text Video: text + video to audio demo using ComfyUI/input/assets/tv2a_video.mp4 and prompt \"Footsteps on gravel\"."
+    "info": "04 TV2A Text Video: text + video to audio demo using ComfyUI/input/assets/tv2a_video.mp4 and prompt \"skateboarding\"."
   },
   "version": 0.4
 }

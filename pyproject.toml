@@ -1,6 +1,6 @@
 [project]
 name = "comfyui-controlfoley"
-description = "ComfyUI nodes and full-task workflows for ControlFoley, supporting V2A, TV2A, TC-V2A, AC-V2A, and T2A."
+description = "Official ComfyUI custom nodes and full-task workflows for ControlFoley, supporting video-, text-, and audio-conditioned Foley generation."
 version = "0.1.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
@@ -34,10 +34,11 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/YJX-Research/comfyui-controlfoley-official"
+Documentation = "https://github.com/YJX-Research/comfyui-controlfoley-official#readme"
+"Bug Tracker" = "https://github.com/YJX-Research/comfyui-controlfoley-official/issues"
 ControlFoley = "https://github.com/xiaomi-research/controlfoley"
 Weights = "https://huggingface.co/YJX-Xiaomi/ControlFoley"
 
 [tool.comfy]
-PublisherId = "sound"
-DisplayName = "comfyui-controlfoley"
-Icon = ""
+PublisherId = "controlfoley-team"
+DisplayName = "ControlFoley Official"

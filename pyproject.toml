@@ -1,5 +1,5 @@
 [project]
-name = "controlfoley"
+name = "ComfyUI-ControlFoley"
 description = "Official ComfyUI custom nodes and full-task workflows for ControlFoley, supporting controllable SFX generation, video-to-audio, text-to-audio, text-controlled video-to-audio, and audio-conditioned video-to-audio."
 version = "0.1.0"
 license = { file = "LICENSE" }

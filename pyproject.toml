@@ -1,6 +1,6 @@
 [project]
-name = "comfyui-controlfoley"
-description = "Official ComfyUI custom nodes and full-task workflows for ControlFoley, supporting video-, text-, and audio-conditioned Foley generation."
+name = "controlfoley"
+description = "Official ComfyUI custom nodes and full-task workflows for ControlFoley, supporting controllable SFX generation, video-to-audio, text-to-audio, text-controlled video-to-audio, and audio-conditioned video-to-audio."
 version = "0.1.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
@@ -40,5 +40,5 @@ ControlFoley = "https://github.com/xiaomi-research/controlfoley"
 Weights = "https://huggingface.co/YJX-Xiaomi/ControlFoley"
 
 [tool.comfy]
-PublisherId = "controlfoley-team"
+PublisherId = "yjx-research"
 DisplayName = "ControlFoley Official"

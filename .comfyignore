@@ -1,0 +1,4 @@
+# Keep workflows and documentation in the Registry package, but avoid
+# shipping large demo media files through ComfyUI Manager installs.
+examples/generated/**/*.mp4
+examples/generated/**/*.wav

@@ -1227,12 +1227,14 @@ class UnloadControlFoleyModel:
     def unload(self, controlfoley_model, after=None):
         if after is None:
             return ("Connect the after input to unload after generation",)
-        controlfoley_model.unload()
         keys = [k for k, v in _MODEL_CACHE.items() if v is controlfoley_model]
         for key in keys:
             _MODEL_CACHE.pop(key, None)
         _VIDEO_CACHE.clear()
-        return ("ControlFoley model unloaded",)
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        return ("ControlFoley model cache cleared",)
 
 
 NODE_CLASS_MAPPINGS = {

@@ -1,0 +1,254 @@
+{
+  "last_node_id": 6,
+  "last_link_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "type": "LoadControlFoleyDependencies",
+      "pos": [
+        60,
+        80
+      ],
+      "size": [
+        380,
+        160
+      ],
+      "outputs": [
+        {
+          "name": "controlfoley_dependencies",
+          "type": "CONTROLFOLEY_DEPENDENCIES",
+          "links": [
+            1
+          ]
+        }
+      ],
+      "widgets_values": [
+        "path/to/controlfoley",
+        "path/to/model_weights",
+        false,
+        true
+      ]
+    },
+    {
+      "id": 2,
+      "type": "LoadControlFoleyModel",
+      "pos": [
+        500,
+        80
+      ],
+      "size": [
+        380,
+        190
+      ],
+      "inputs": [
+        {
+          "name": "dependencies",
+          "type": "CONTROLFOLEY_DEPENDENCIES",
+          "link": 1
+        }
+      ],
+      "outputs": [
+        {
+          "name": "controlfoley_model",
+          "type": "CONTROLFOLEY_MODEL",
+          "links": [
+            2
+          ]
+        }
+      ],
+      "widgets_values": [
+        "path/to/controlfoley",
+        "path/to/model_weights",
+        "large_44k",
+        "auto",
+        "bf16",
+        false,
+        false
+      ]
+    },
+    {
+      "id": 3,
+      "type": "ControlFoleyTorchCompile",
+      "pos": [
+        940,
+        80
+      ],
+      "size": [
+        300,
+        110
+      ],
+      "inputs": [
+        {
+          "name": "controlfoley_model",
+          "type": "CONTROLFOLEY_MODEL",
+          "link": 2
+        }
+      ],
+      "outputs": [
+        {
+          "name": "controlfoley_model",
+          "type": "CONTROLFOLEY_MODEL",
+          "links": [
+            3,
+            5
+          ]
+        }
+      ],
+      "widgets_values": [
+        true,
+        false
+      ]
+    },
+    {
+      "id": 4,
+      "type": "ControlFoleyGenerateAdvanced",
+      "pos": [
+        940,
+        270
+      ],
+      "size": [
+        470,
+        330
+      ],
+      "inputs": [
+        {
+          "name": "controlfoley_model",
+          "type": "CONTROLFOLEY_MODEL",
+          "link": 3
+        }
+      ],
+      "outputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "links": [
+            4,
+            6
+          ]
+        }
+      ],
+      "widgets_values": [
+        "A bird sings melodically in a forest",
+        "",
+        10.0,
+        42,
+        "fixed",
+        "25",
+        4.5,
+        true,
+        false,
+        true,
+        "8",
+        "8",
+        true,
+        false,
+        "",
+        24.0
+      ]
+    },
+    {
+      "id": 5,
+      "type": "SaveControlFoleyAudio",
+      "pos": [
+        1490,
+        270
+      ],
+      "size": [
+        330,
+        120
+      ],
+      "inputs": [
+        {
+          "name": "audio",
+          "type": "AUDIO",
+          "link": 4
+        }
+      ],
+      "widgets_values": [
+        "controlfoley/advanced_chain_prompt_output",
+        "wav"
+      ]
+    },
+    {
+      "id": 6,
+      "type": "UnloadControlFoleyModel",
+      "pos": [
+        1490,
+        450
+      ],
+      "size": [
+        280,
+        80
+      ],
+      "inputs": [
+        {
+          "name": "controlfoley_model",
+          "type": "CONTROLFOLEY_MODEL",
+          "link": 5
+        },
+        {
+          "name": "after",
+          "type": "AUDIO",
+          "link": 6
+        }
+      ],
+      "widgets_values": []
+    }
+  ],
+  "links": [
+    [
+      1,
+      1,
+      0,
+      2,
+      0,
+      "CONTROLFOLEY_DEPENDENCIES"
+    ],
+    [
+      2,
+      2,
+      0,
+      3,
+      0,
+      "CONTROLFOLEY_MODEL"
+    ],
+    [
+      3,
+      3,
+      0,
+      4,
+      0,
+      "CONTROLFOLEY_MODEL"
+    ],
+    [
+      4,
+      4,
+      0,
+      5,
+      0,
+      "AUDIO"
+    ],
+    [
+      5,
+      3,
+      0,
+      6,
+      0,
+      "CONTROLFOLEY_MODEL"
+    ],
+    [
+      6,
+      4,
+      0,
+      6,
+      1,
+      "AUDIO"
+    ]
+  ],
+  "groups": [],
+  "config": {},
+  "extra": {
+    "info": "06 Advanced Chain: dependency loader, model loader, compile node, advanced generator, save, and unload demo."
+  },
+  "version": 0.4
+}

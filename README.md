@@ -1,7 +1,8 @@
 # comfyui-controlfoley
 
 <p>
-  <a href="https://github.com/YJX-Research/comfyui-controlfoley-official"><img alt="ComfyUI custom node" src="https://img.shields.io/badge/ComfyUI-custom%20node-111111"></a>
+  <a href="https://registry.comfy.org/publishers/yjx-research/nodes/ComfyUI-ControlFoley"><img alt="Comfy Registry" src="https://img.shields.io/badge/Comfy%20Registry-ControlFoley%20Official-blue"></a>
+  <a href="https://github.com/YJX-Research/comfyui-controlfoley-official"><img alt="GitHub source" src="https://img.shields.io/badge/GitHub-source-111111"></a>
   <a href="https://github.com/xiaomi-research/controlfoley"><img alt="ControlFoley" src="https://img.shields.io/badge/ControlFoley-official%20integration-2f80ed"></a>
   <img alt="Python" src="https://img.shields.io/badge/python-3.10%2B-3776ab">
   <img alt="License" src="https://img.shields.io/badge/code%20license-Apache--2.0-green">
@@ -34,7 +35,9 @@ This repository is a ComfyUI integration layer. It does not modify the ControlFo
 
 ## 🚀 Installation
 
-Clone this custom node into `ComfyUI/custom_nodes`:
+Install `ControlFoley Official` from [Comfy Registry](https://registry.comfy.org/publishers/yjx-research/nodes/ComfyUI-ControlFoley) / ComfyUI Manager when available.
+
+For source installation, clone this custom node into `ComfyUI/custom_nodes`:
 
 ```bash
 cd ComfyUI/custom_nodes

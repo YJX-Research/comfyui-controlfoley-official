@@ -580,16 +580,36 @@ def _patch_timbre_dtype_alignment(net: Any) -> None:
     original = getattr(net, "preprocess_conditions", None)
     projection = getattr(net, "timbre_input_proj", None)
     if original is None or projection is None:
+        # Upstream renamed or removed the attributes this patch relies on; a
+        # silent no-op here would let the bf16/fp16 timbre crash quietly return.
+        print(
+            "[ControlFoley] WARNING: timbre dtype patch could not be installed "
+            "(preprocess_conditions/timbre_input_proj not found on the upstream model). "
+            "Reference-audio runs in bf16/fp16 may fail with a dtype mismatch."
+        )
         return
 
-    def _patched_preprocess_conditions(clip_f, visual_f, sync_f, text_f, audio_f, timbre_f):
+    # Upstream signature: preprocess_conditions(clip_f, visual_f, sync_f, text_f,
+    # audio_f, timbre_f). Forward everything verbatim so added upstream parameters
+    # keep working; only the timbre tensor is realigned.
+    def _patched_preprocess_conditions(*args, **kwargs):
         try:
             param = next(projection.parameters())
-            if timbre_f is not None and (timbre_f.dtype != param.dtype or timbre_f.device != param.device):
-                timbre_f = timbre_f.to(device=param.device, dtype=param.dtype)
         except StopIteration:
-            pass
-        return original(clip_f, visual_f, sync_f, text_f, audio_f, timbre_f)
+            param = None
+        if param is not None:
+            def _align(value):
+                if torch.is_tensor(value) and (value.dtype != param.dtype or value.device != param.device):
+                    return value.to(device=param.device, dtype=param.dtype)
+                return value
+
+            if "timbre_f" in kwargs:
+                kwargs["timbre_f"] = _align(kwargs["timbre_f"])
+            elif len(args) >= 6:
+                args = list(args)
+                args[5] = _align(args[5])
+                args = tuple(args)
+        return original(*args, **kwargs)
 
     net.preprocess_conditions = _patched_preprocess_conditions
     net._controlfoley_timbre_dtype_patch = True

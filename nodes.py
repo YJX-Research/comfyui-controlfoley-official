@@ -1174,8 +1174,8 @@ class LoadControlFoleyVideo:
             }
         }
 
-    RETURN_TYPES = (CONTROLFOLEY_VIDEO_TYPE, "STRING")
-    RETURN_NAMES = ("controlfoley_video", "video_path")
+    RETURN_TYPES = (CONTROLFOLEY_VIDEO_TYPE, "STRING", "VIDEO")
+    RETURN_NAMES = ("controlfoley_video", "video_path", "video_output")
     FUNCTION = "load"
     OUTPUT_NODE = True
     CATEGORY = CATEGORY
@@ -1188,6 +1188,15 @@ class LoadControlFoleyVideo:
         mtime_ns, size = _path_signature(resolved)
         return f"{resolved}:{mtime_ns}:{size}:{float(duration)}"
 
+    @staticmethod
+    def _native_video_output(path: Path):
+        try:
+            from comfy_api.latest import InputImpl
+        except Exception as exc:
+            print(f"[ControlFoley] Native VIDEO output unavailable in this ComfyUI version: {exc}")
+            return None
+        return InputImpl.VideoFromFile(str(path))
+
     def load(self, video_path, duration):
         resolved = _resolve_path(video_path)
         if resolved is None or not resolved.exists():
@@ -1196,7 +1205,7 @@ class LoadControlFoleyVideo:
             raise ValueError(f"Input video path must be a file, not a directory: {video_path}")
         source_duration = _media_duration(resolved)
         effective_duration = _bounded_duration(source_duration or duration, float(duration))
-        result = ({"path": resolved, "duration": effective_duration}, str(resolved))
+        result = ({"path": resolved, "duration": effective_duration}, str(resolved), self._native_video_output(resolved))
         return {"ui": _video_ui(resolved), "result": result}
 
 

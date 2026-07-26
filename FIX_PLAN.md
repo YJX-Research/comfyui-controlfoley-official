@@ -191,4 +191,6 @@ README 改动同样一条一 commit、同样过 Codex review。
 
 ## Codex review 记录
 
-(每条 commit 后追加)
+### F0(57c652f)
+- Codex 指出:auto-fetch 若只是 clone 到固定目标、调用方仍沿用先前解析出的(可能错误的)`source_dir`,首次运行仍会检查错目录。**接受**——F2.1 实现改为:helper 成功时返回最终目录,调用方用返回值覆盖 `source_dir`;并明确 auto-fetch 只落到默认根目录位置,不 clone 到用户显式路径。
+- `.gitignore` 改动无缺陷。

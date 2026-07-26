@@ -3,7 +3,10 @@ import inspect
 import importlib
 import os
 import shutil
+import stat
+import subprocess
 import sys
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -38,6 +41,11 @@ FIXED_STEP_SENTINEL = "fixed"
 DEFAULT_INFERENCE_STEPS = 25
 VIDEO_CACHE_MAX_ITEMS = 2
 DEFAULT_CONTROLFOLEY_SOURCE_DIR = "controlfoley"
+CONTROLFOLEY_SOURCE_DEFAULT_URL = "https://github.com/xiaomi-research/controlfoley"
+# The public inference API is not versioned; an unpinned clone would silently pick up
+# upstream API changes and break this integration, so always fetch a known-good revision.
+CONTROLFOLEY_SOURCE_PIN = "6858cd12a48d141201e3266e7abe1f38357a133e"
+CONTROLFOLEY_FETCH_TIMEOUT_SEC = 300
 DEFAULT_MODEL_WEIGHTS_DIR = "path/to/model_weights"
 DEFAULT_DEMO_VIDEO_PATH = "examples/generated/01_v2a_basic/v2a_video.mp4"
 DEFAULT_TEXT_PROMPT = "A bird sings melodically in a forest"
@@ -156,6 +164,15 @@ def _resolve_controlfoley_source_dir(path_text: str) -> Optional[Path]:
         if resolved is not None:
             return resolved
     return None
+
+
+def _resolve_source_dir_with_auto_fetch(path_text: str, auto_fetch_source: bool) -> Optional[Path]:
+    source_dir = _resolve_controlfoley_source_dir(path_text)
+    if auto_fetch_source and (source_dir is None or not _looks_like_controlfoley_source(source_dir)):
+        fetched = _auto_fetch_controlfoley_source()
+        if fetched is not None:
+            source_dir = fetched
+    return source_dir
 
 
 def _resolve_weights_dir(path_text: str) -> Path:
@@ -415,6 +432,91 @@ def _free_vram_for_low_vram_load() -> None:
         torch.cuda.empty_cache()
 
 
+_SOURCE_FETCH_LOCK = threading.Lock()
+
+
+def _rmtree_force(path: Path) -> None:
+    def _onerror(func, item, exc_info):
+        try:
+            os.chmod(item, stat.S_IWRITE)
+            func(item)
+        except Exception:
+            pass
+
+    shutil.rmtree(str(path), onerror=_onerror)
+
+
+def _controlfoley_source_url() -> str:
+    return os.environ.get("CONTROLFOLEY_SOURCE_URL", "").strip() or CONTROLFOLEY_SOURCE_DEFAULT_URL
+
+
+def _auto_fetch_controlfoley_source() -> Optional[Path]:
+    """Clone the pinned public ControlFoley source into <ComfyUI root>/controlfoley.
+
+    The clone lands in a temporary sibling directory first and is renamed into place
+    only after it passes the completeness check, so a failed or interrupted fetch
+    never leaves a half-populated folder for the auto-detection to misjudge as ready.
+    Returns the final source directory on success, None on any failure (callers fall
+    back to the manual-clone error message).
+    """
+    target = _comfy_root_dir() / DEFAULT_CONTROLFOLEY_SOURCE_DIR
+    with _SOURCE_FETCH_LOCK:
+        if _looks_like_controlfoley_source(target):
+            return target
+        url = _controlfoley_source_url()
+        tmp = target.parent / f"{DEFAULT_CONTROLFOLEY_SOURCE_DIR}.fetch-{os.getpid()}-{time.time_ns()}"
+        print(
+            f"[ControlFoley] Auto-fetching ControlFoley source revision {CONTROLFOLEY_SOURCE_PIN[:7]} "
+            f"from {url} into {target}"
+        )
+        try:
+            if target.exists():
+                raise RuntimeError(
+                    f"{target} already exists but is not a complete ControlFoley source tree; "
+                    "remove it or point controlfoley_source_dir at a valid clone."
+                )
+            tmp.mkdir(parents=True, exist_ok=False)
+
+            def _run_git(*args: str) -> None:
+                completed = subprocess.run(
+                    ["git", *args],
+                    cwd=str(tmp),
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=CONTROLFOLEY_FETCH_TIMEOUT_SEC,
+                )
+                if completed.returncode != 0:
+                    detail = (completed.stderr or completed.stdout or "").strip()[:500]
+                    raise RuntimeError(f"git {args[0]} failed: {detail}")
+
+            _run_git("init", "--quiet")
+            _run_git("remote", "add", "origin", url)
+            _run_git("fetch", "--quiet", "--depth", "1", "origin", CONTROLFOLEY_SOURCE_PIN)
+            _run_git("checkout", "--quiet", "FETCH_HEAD")
+            if not _looks_like_controlfoley_source(tmp):
+                raise RuntimeError(
+                    "fetched tree does not look like the public ControlFoley source "
+                    "(missing demo.py / controlfoley/inference_utils.py)"
+                )
+            tmp.rename(target)
+            print(f"[ControlFoley] ControlFoley source fetch complete: {target}")
+            return target
+        except subprocess.TimeoutExpired:
+            print(
+                "[ControlFoley] ControlFoley source auto-fetch timed out after "
+                f"{CONTROLFOLEY_FETCH_TIMEOUT_SEC}s. If GitHub is unreachable from your network, "
+                "set the CONTROLFOLEY_SOURCE_URL environment variable to a reachable mirror."
+            )
+            return None
+        except Exception as exc:
+            print(f"[ControlFoley] ControlFoley source auto-fetch failed: {exc}")
+            return None
+        finally:
+            if tmp.exists():
+                _rmtree_force(tmp)
+
+
 def _ensure_public_controlfoley_repo(source_dir: Path) -> None:
     required = [
         source_dir / "demo.py",
@@ -428,7 +530,10 @@ def _ensure_public_controlfoley_repo(source_dir: Path) -> None:
         hint = (
             "Clone https://github.com/xiaomi-research/controlfoley and set "
             "controlfoley_source_dir to that folder. The node also auto-detects "
-            "a sibling or ComfyUI-root folder named 'controlfoley'."
+            "a sibling or ComfyUI-root folder named 'controlfoley'. "
+            "With auto_fetch_source enabled the node clones this automatically; "
+            "if GitHub is unreachable from your network, set the CONTROLFOLEY_SOURCE_URL "
+            "environment variable to a reachable mirror of the repository and retry."
         )
         raise FileNotFoundError(
             "ControlFoley public source directory is incomplete. "
@@ -784,6 +889,12 @@ class LoadControlFoleyDependencies:
                 "model_weights_dir": ("STRING", {"default": DEFAULT_MODEL_WEIGHTS_DIR}),
                 "low_vram": ("BOOLEAN", {"default": False}),
                 "auto_download": ("BOOLEAN", {"default": True}),
+                "auto_fetch_source": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "When the public ControlFoley source tree is not found locally, run 'git clone' "
+                               "(pinned revision) from GitHub into <ComfyUI root>/controlfoley. "
+                               "Set the CONTROLFOLEY_SOURCE_URL environment variable to use a mirror.",
+                }),
             }
         }
 
@@ -792,8 +903,8 @@ class LoadControlFoleyDependencies:
     FUNCTION = "load_dependencies"
     CATEGORY = CATEGORY
 
-    def load_dependencies(self, controlfoley_source_dir, model_weights_dir, low_vram, auto_download):
-        source_dir = _resolve_controlfoley_source_dir(controlfoley_source_dir)
+    def load_dependencies(self, controlfoley_source_dir, model_weights_dir, low_vram, auto_download, auto_fetch_source=True):
+        source_dir = _resolve_source_dir_with_auto_fetch(controlfoley_source_dir, bool(auto_fetch_source))
         weights_dir = _resolve_weights_dir(model_weights_dir)
         if source_dir is None:
             raise ValueError("ControlFoley source directory is required.")
@@ -818,6 +929,12 @@ class LoadControlFoleyModel:
                 "precision": (["bf16", "fp16", "fp32"], {"default": "bf16"}),
                 "low_vram": ("BOOLEAN", {"default": False}),
                 "compile_encoders": ("BOOLEAN", {"default": False}),
+                "auto_fetch_source": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "When the public ControlFoley source tree is not found locally, run 'git clone' "
+                               "(pinned revision) from GitHub into <ComfyUI root>/controlfoley. "
+                               "Set the CONTROLFOLEY_SOURCE_URL environment variable to use a mirror.",
+                }),
             },
             "optional": {
                 "dependencies": (CONTROLFOLEY_DEPENDENCIES_TYPE,),
@@ -829,13 +946,13 @@ class LoadControlFoleyModel:
     FUNCTION = "load"
     CATEGORY = CATEGORY
 
-    def load(self, controlfoley_source_dir, model_weights_dir, variant, device, precision, low_vram, compile_encoders, dependencies=None):
+    def load(self, controlfoley_source_dir, model_weights_dir, variant, device, precision, low_vram, compile_encoders, auto_fetch_source=True, dependencies=None):
         if dependencies is not None:
             source_dir = dependencies.source_dir
             weights_dir = dependencies.weights_dir
             low_vram = dependencies.low_vram
         else:
-            source_dir = _resolve_controlfoley_source_dir(controlfoley_source_dir)
+            source_dir = _resolve_source_dir_with_auto_fetch(controlfoley_source_dir, bool(auto_fetch_source))
             weights_dir = _resolve_weights_dir(model_weights_dir)
         if source_dir is None:
             raise ValueError("ControlFoley source and weights directories are required.")
@@ -979,6 +1096,12 @@ class ControlFoleySimpleGenerate:
                 "image_fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0}),
                 "enabled": ("BOOLEAN", {"default": True}),
                 "silent_audio_on_error": ("BOOLEAN", {"default": False}),
+                "auto_fetch_source": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "When the public ControlFoley source tree is not found locally, run 'git clone' "
+                               "(pinned revision) from GitHub into <ComfyUI root>/controlfoley. "
+                               "Set the CONTROLFOLEY_SOURCE_URL environment variable to use a mirror.",
+                }),
             },
             "optional": {
                 "video": (CONTROLFOLEY_VIDEO_TYPE,),
@@ -996,12 +1119,12 @@ class ControlFoleySimpleGenerate:
                  prompt, negative_prompt, duration, seed, num_inference_steps, guidance_scale, mask_away_clip,
                  cache_video_features, staged_offload, clip_batch_size_multiplier=40, sync_batch_size_multiplier=40,
                  video=None, video_input=None, images=None, reference_audio_path="", image_fps=24.0,
-                 enabled=True, silent_audio_on_error=False):
+                 enabled=True, silent_audio_on_error=False, auto_fetch_source=True):
         if not enabled:
             silent = _make_silent_audio(float(duration), 44100)
             return (silent, int(silent["sample_rate"]), 0.0, 0.0, "Generation disabled; returned silence.")
         dependencies = ControlFoleyDependencies(
-            source_dir=_resolve_controlfoley_source_dir(controlfoley_source_dir) or Path(controlfoley_source_dir),
+            source_dir=_resolve_source_dir_with_auto_fetch(controlfoley_source_dir, bool(auto_fetch_source)) or Path(controlfoley_source_dir),
             weights_dir=_resolve_weights_dir(model_weights_dir),
             low_vram=bool(low_vram),
         )

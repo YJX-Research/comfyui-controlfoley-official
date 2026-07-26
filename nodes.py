@@ -680,6 +680,21 @@ def _cache_video(video_path: Path, video_info: Any, requested_duration: float, l
         _VIDEO_CACHE.popitem(last=False)
 
 
+_STAGED_OFFLOAD_WARNED = False
+
+
+def _warn_staged_offload_unsupported() -> None:
+    global _STAGED_OFFLOAD_WARNED
+    if _STAGED_OFFLOAD_WARNED:
+        return
+    _STAGED_OFFLOAD_WARNED = True
+    print(
+        "[ControlFoley] Note: the selected ControlFoley source does not accept a "
+        "staged_offload parameter (the public upstream source does not implement it); "
+        "the staged_offload option is ignored for this source."
+    )
+
+
 def _throw_if_interrupted() -> None:
     try:
         import comfy.model_management as model_management
@@ -1105,7 +1120,12 @@ class ControlFoleyGenerateAdvanced:
                 "guidance_scale": ("FLOAT", {"default": 4.5, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "mask_away_clip": ("BOOLEAN", {"default": False}),
                 "cache_video_features": ("BOOLEAN", {"default": True}),
-                "staged_offload": ("BOOLEAN", {"default": True}),
+                "staged_offload": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Move encoders to CPU during sampling when the ControlFoley source supports it. "
+                               "The public upstream source does not implement this; the option is then ignored "
+                               "and a console note is printed.",
+                }),
                 "clip_batch_size_multiplier": ("STRING", {
                     "default": "40",
                     "tooltip": "Integer 1-80. Frames per CLIP encoder call = batch size * multiplier. Use 4-8 on low-VRAM GPUs.",
@@ -1181,7 +1201,12 @@ class ControlFoleySimpleGenerate:
                 "guidance_scale": ("FLOAT", {"default": 4.5, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "mask_away_clip": ("BOOLEAN", {"default": False}),
                 "cache_video_features": ("BOOLEAN", {"default": True}),
-                "staged_offload": ("BOOLEAN", {"default": True}),
+                "staged_offload": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Move encoders to CPU during sampling when the ControlFoley source supports it. "
+                               "The public upstream source does not implement this; the option is then ignored "
+                               "and a console note is printed.",
+                }),
                 "clip_batch_size_multiplier": ("STRING", {
                     "default": "40",
                     "tooltip": "Integer 1-80. Use 4-8 on low-VRAM GPUs.",
@@ -1295,7 +1320,12 @@ class ControlFoleyGenerate:
                 "guidance_scale": ("FLOAT", {"default": 4.5, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "mask_away_clip": ("BOOLEAN", {"default": False}),
                 "cache_video_features": ("BOOLEAN", {"default": True}),
-                "staged_offload": ("BOOLEAN", {"default": True}),
+                "staged_offload": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Move encoders to CPU during sampling when the ControlFoley source supports it. "
+                               "The public upstream source does not implement this; the option is then ignored "
+                               "and a console note is printed.",
+                }),
                 "clip_batch_size_multiplier": ("STRING", {
                     "default": "40",
                     "tooltip": "Integer 1-80. Frames per CLIP encoder call = batch size * multiplier. Use 4-8 on low-VRAM GPUs.",
@@ -1424,6 +1454,8 @@ class ControlFoleyGenerate:
             supports_sync_batch = "sync_batch_size_multiplier" in generate_params or supports_kwargs
             if supports_staged_offload:
                 generate_kwargs["staged_offload"] = bool(staged_offload or runtime.low_vram)
+            elif staged_offload:
+                _warn_staged_offload_unsupported()
             if supports_clip_batch:
                 generate_kwargs["clip_batch_size_multiplier"] = int(clip_batch_size_multiplier)
             if supports_sync_batch:

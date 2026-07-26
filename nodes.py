@@ -854,8 +854,19 @@ def _relative_to(path: Path, root: Path) -> Optional[Path]:
         return None
 
 
+def _comfy_temp_dir() -> Path:
+    if folder_paths is not None:
+        return Path(folder_paths.get_temp_directory())
+    return Path.cwd() / "temp"
+
+
 def _ui_file_entry(path: Path, file_type: str = "output") -> dict[str, str]:
-    base = _output_dir() if file_type == "output" else _input_dir()
+    if file_type == "input":
+        base = _input_dir()
+    elif file_type == "temp":
+        base = _comfy_temp_dir()
+    else:
+        base = _output_dir()
     rel = _relative_to(path, base)
     subfolder = str(rel.parent).replace("\\", "/") if rel is not None and str(rel.parent) != "." else ""
     return {"filename": path.name, "subfolder": subfolder, "type": file_type}
@@ -864,8 +875,11 @@ def _ui_file_entry(path: Path, file_type: str = "output") -> dict[str, str]:
 def _preview_video_path(path: Path) -> Path:
     if _relative_to(path, _output_dir()) is not None or _relative_to(path, _input_dir()) is not None:
         return path
+    # Files outside output/input (e.g. the bundled demo media) are copied into the
+    # ComfyUI temp directory so /view can serve them; temp is cleared on restart,
+    # so preview copies never accumulate in the user's output folder.
     mtime_ns, size = _path_signature(path)
-    preview_dir = _output_dir() / "controlfoley" / "previews"
+    preview_dir = _comfy_temp_dir() / "controlfoley_previews"
     preview_dir.mkdir(parents=True, exist_ok=True)
     preview_path = preview_dir / f"{path.stem}_{size}_{mtime_ns}{path.suffix}"
     if not preview_path.exists():
@@ -878,7 +892,12 @@ def _video_ui(path: Path) -> dict[str, Any]:
     # (ui.PreviewVideo): the stock frontend only renders video results from the
     # "images" + "animated" keys; the VHS-style "gifs" key is ignored.
     preview_path = _preview_video_path(path)
-    file_type = "input" if _relative_to(preview_path, _input_dir()) is not None else "output"
+    if _relative_to(preview_path, _input_dir()) is not None:
+        file_type = "input"
+    elif _relative_to(preview_path, _output_dir()) is not None:
+        file_type = "output"
+    else:
+        file_type = "temp"
     entry = _ui_file_entry(preview_path, file_type)
     return {"images": [entry], "animated": (True,)}
 

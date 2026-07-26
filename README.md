@@ -164,7 +164,7 @@ Workflow templates are in `examples/workflows`:
 | `06_advanced_chain.json` | Advanced generation chain | WAV |
 | `07_simple_generate.json` | Simple one-node T2A generation | WAV |
 
-Before running any workflow, make sure the local ControlFoley source tree is available and review the weight directory setting:
+Before running any workflow, review the source and weight directory settings (the source tree is fetched automatically by default; prepare it manually only for offline or custom layouts):
 
 - `controlfoley`: default source-tree value. The node auto-detects a local clone named `controlfoley` next to this custom node, under the ComfyUI root, or from `CONTROLFOLEY_SOURCE_DIR`; replace it with an absolute path if needed.
 - `path/to/model_weights`: keep this placeholder to use the default automatic download directory, or replace it with a custom writable local weight directory.

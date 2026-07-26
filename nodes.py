@@ -1400,7 +1400,13 @@ class SaveControlFoleyAudio:
                 "audio": (AUDIO_TYPE,),
                 "filename_prefix": ("STRING", {"default": "controlfoley/output"}),
                 "format": (["wav", "flac"], {"default": "wav"}),
-            }
+            },
+            # The stock frontend only auto-creates an audio player for a hard-coded
+            # list of core node classes; custom nodes must declare the AUDIO_UI
+            # widget themselves for the ui.audio result to get a player.
+            "optional": {
+                "audioUI": ("AUDIO_UI",),
+            },
         }
 
     RETURN_TYPES = (AUDIO_TYPE, CONTROLFOLEY_AUDIO_FILE_TYPE, "STRING")
@@ -1410,10 +1416,10 @@ class SaveControlFoleyAudio:
     CATEGORY = CATEGORY
 
     @classmethod
-    def IS_CHANGED(cls, audio, filename_prefix, format):
+    def IS_CHANGED(cls, audio, filename_prefix, format, audioUI=None):
         return time.time_ns()
 
-    def save(self, audio, filename_prefix, format):
+    def save(self, audio, filename_prefix, format, audioUI=None):
         import soundfile as sf
         out_dir = _output_dir()
         relative = _safe_path(filename_prefix, "controlfoley/output", f".{format}")

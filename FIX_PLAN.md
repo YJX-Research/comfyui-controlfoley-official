@@ -71,6 +71,13 @@
 - **验证**:七个模板逐个出厂状态 Run,截图/描述画布上出现的播放器,不叠框。
 - **风险**:低,纯 JSON 摆位。
 
+### F1.5 Save Audio 节点声明 `AUDIO_UI` widget(运行时新发现,计划外新增)
+- **问题**:实跑发现返回 `{"audio": [...]}` 后画布上仍无播放器。根因:前端 `Comfy.AudioWidget` 扩展只给硬编码的核心节点类(`LoadAudio/SaveAudio/PreviewAudio/SaveAudioMP3/SaveAudioOpus/SaveAudioAdvanced`)注入 `audioUI` widget;`onNodeOutputsUpdated` 只**更新已存在**的 `audioUI` widget,不会为自定义节点创建。视频的 `images+animated` 路径无此限制(实测 Loader 与 Muxer 预览均已渲染)。
+- **证据**:前端 bundle `Comfy.AudioWidget` 扩展源码(beforeRegisterNodeDef 的硬编码类名列表);实跑模板 01:`app.nodeOutputs` 中三个节点结果齐全,仅 SaveAudio 无 widget。
+- **修法**:`SaveControlFoleyAudio.INPUT_TYPES` 的 optional 里声明 `"audioUI": ("AUDIO_UI",)`(放 optional 避免"widget 不序列化 → 服务端校验缺必填参数"的风险),`save`/`IS_CHANGED` 加 `audioUI=None` 兼容其序列化与否两种行为。
+- **验证**:重启后实跑,SaveAudio 节点出现可播放的音频控件。
+- **风险**:低。
+
 ---
 
 ## 任务三:整体 code review(按严重程度排序)
@@ -194,6 +201,12 @@ README 改动同样一条一 commit、同样过 Codex review。
 ### F0(57c652f)
 - Codex 指出:auto-fetch 若只是 clone 到固定目标、调用方仍沿用先前解析出的(可能错误的)`source_dir`,首次运行仍会检查错目录。**接受**——F2.1 实现改为:helper 成功时返回最终目录,调用方用返回值覆盖 `source_dir`;并明确 auto-fetch 只落到默认根目录位置,不 clone 到用户显式路径。
 - `.gitignore` 改动无缺陷。
+
+### F1.1(8d07834)/F1.2(5848931)/F1.3(5bd59c0)
+- Codex 三条均未发现实际缺陷;F1.1 并对照上游 `PreviewVideo.as_dict()` 契约核对一致。
+
+### F1.4(44eb13a)
+- Codex 报 7 条 "widgets_values 里 'fixed' 后多了 '25'"。**全部拒绝**:`seed` 是 INT widget,前端为其附加 `control_after_generate` widget 且序列化在 seed 值之后,`[42, "fixed", "25", 4.5]` 依次是 seed / control_after_generate / num_inference_steps / guidance_scale;README 明确记载"control_after_generate 设为 fixed、steps 设为 25",且这批模板两轮验收均按预期参数跑通,若真错位布尔字段早已崩溃。Codex 漏算了附加 widget。
 
 ### F2.1(8456f9b)
 - 实测记录:本地 file:// 镜像五用例全 PASS(clone 成功/幂等/坏 URL 干净失败无残留/目标存在但不完整时拒绝且不动用户目录/开关关不 clone);本机 GitHub 直连可达,上游 HEAD 即 pin 的 `6858cd1`。

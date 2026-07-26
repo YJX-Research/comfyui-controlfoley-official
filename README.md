@@ -35,7 +35,9 @@ This repository is a ComfyUI integration layer. It does not modify the ControlFo
 
 ## 🚀 Installation
 
-Install `ControlFoley Official` from [Comfy Registry](https://registry.comfy.org/publishers/yjx-research/nodes/ComfyUI-ControlFoley) / ComfyUI Manager when available.
+Install `ControlFoley Official` from [Comfy Registry](https://registry.comfy.org/publishers/yjx-research/nodes/ComfyUI-ControlFoley) / ComfyUI Manager. This installs the custom node package and bundled workflow templates.
+
+After installing the node, clone the public ControlFoley repository separately. The node auto-detects a folder named `controlfoley` next to this custom node, under the ComfyUI root, or from `CONTROLFOLEY_SOURCE_DIR`; otherwise set `controlfoley_source_dir` manually in the workflow.
 
 For source installation, clone this custom node into `ComfyUI/custom_nodes`:
 
@@ -68,12 +70,12 @@ python main.py
 1. Install ComfyUI.
 2. Clone this custom node into `ComfyUI/custom_nodes`.
 3. Install requirements with `pip install -r requirements.txt`; keep the existing ComfyUI PyTorch stack.
-4. Clone the public ControlFoley repository.
+4. Clone the public ControlFoley repository as `controlfoley` next to this custom node or under the ComfyUI root, or set `CONTROLFOLEY_SOURCE_DIR`.
 5. Start ComfyUI.
-6. Load a workflow from `examples/workflows`.
-7. Set `controlfoley_source_dir`; leave `model_weights_dir` as `path/to/model_weights` to use the default download directory, or set a custom local path.
-8. Place bundled input videos and reference audio in `ComfyUI/input/assets`, or edit the workflow paths.
-9. Run the workflow and check `ComfyUI/output/controlfoley`.
+6. Open the bundled templates from ComfyUI Browse Templates or load a workflow from `examples/workflows`.
+7. Leave `model_weights_dir` as `path/to/model_weights` to use the default download directory, or set a custom local path.
+8. The bundled workflow templates point to demo media under this node's `examples/generated` folder. You can also copy inputs into `ComfyUI/input/assets` or edit the workflow paths.
+9. Run the workflow. Output nodes show audio/video previews and save files under `ComfyUI/output/controlfoley`.
 
 ## 📦 ControlFoley Weights
 
@@ -84,7 +86,7 @@ If `model_weights_dir` is empty or left as `path/to/model_weights`, the node use
 You can still pre-download the public model release manually:
 
 ```bash
-pip install huggingface-hub
+pip install "huggingface-hub[hf_xet]"
 huggingface-cli download YJX-Xiaomi/ControlFoley \
   --resume-download \
   --local-dir model_weights \
@@ -162,9 +164,9 @@ Workflow templates are in `examples/workflows`:
 | `06_advanced_chain.json` | Advanced generation chain | WAV |
 | `07_simple_generate.json` | Simple one-node T2A generation | WAV |
 
-Before running any workflow, edit these placeholders:
+Before running any workflow, make sure the local ControlFoley source tree is available and review the weight directory setting:
 
-- `path/to/controlfoley`: local clone of the public ControlFoley repository.
+- `controlfoley`: default source-tree value. The node auto-detects a local clone named `controlfoley` next to this custom node, under the ComfyUI root, or from `CONTROLFOLEY_SOURCE_DIR`; replace it with an absolute path if needed.
 - `path/to/model_weights`: keep this placeholder to use the default automatic download directory, or replace it with a custom writable local weight directory.
 
 Mode mapping:
@@ -213,7 +215,7 @@ See `examples/generated/README.md` for demo media credits.
 
 ## 📥 Input Media
 
-The workflow templates expect demo input media under `ComfyUI/input/assets`. To run the bundled examples, copy the approved demo inputs from `examples/generated` into `ComfyUI/input/assets` using the names below, or edit the workflow paths.
+The workflow templates bundled with the node point directly to approved demo inputs under `examples/generated`, and relative paths are resolved against the custom-node folder. You may also copy the approved demo inputs into `ComfyUI/input/assets` using the names below, or edit the workflow paths.
 
 Suggested demo input mapping:
 

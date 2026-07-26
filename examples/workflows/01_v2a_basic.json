@@ -14,7 +14,7 @@
         190
       ],
       "widgets_values": [
-        "path/to/controlfoley",
+        "controlfoley",
         "path/to/model_weights",
         "large_44k",
         "auto",
@@ -45,8 +45,8 @@
         100
       ],
       "widgets_values": [
-        "assets/v2a_video.mp4",
-        30.0
+        "examples/generated/01_v2a_basic/v2a_video.mp4",
+        8.0
       ],
       "outputs": [
         {
@@ -73,7 +73,7 @@
       "widgets_values": [
         "",
         "",
-        30.0,
+        8.0,
         42,
         "fixed",
         "25",
@@ -238,7 +238,7 @@
   "groups": [],
   "config": {},
   "extra": {
-    "info": "01 V2A Basic: video-to-audio demo using ComfyUI/input/assets/v2a_video.mp4."
+    "info": "01 V2A Basic: video-to-audio demo using ComfyUI/input/examples/generated/01_v2a_basic/v2a_video.mp4."
   },
   "version": 0.4
 }

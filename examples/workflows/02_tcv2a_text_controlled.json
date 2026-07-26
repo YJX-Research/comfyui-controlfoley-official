@@ -14,7 +14,7 @@
         190
       ],
       "widgets_values": [
-        "path/to/controlfoley",
+        "controlfoley",
         "path/to/model_weights",
         "large_44k",
         "auto",
@@ -45,8 +45,8 @@
         100
       ],
       "widgets_values": [
-        "assets/tcv2a_video.mp4",
-        30.0
+        "examples/generated/02_tcv2a_text_controlled/tcv2a_video.mp4",
+        8.0
       ],
       "outputs": [
         {
@@ -73,7 +73,7 @@
       "widgets_values": [
         "thunder strike",
         "",
-        30.0,
+        8.0,
         42,
         "fixed",
         "25",
@@ -238,7 +238,7 @@
   "groups": [],
   "config": {},
   "extra": {
-    "info": "02 TC-V2A Text Controlled: text-controlled video-to-audio demo using ComfyUI/input/assets/tcv2a_video.mp4 and prompt \"thunder strike\"."
+    "info": "02 TC-V2A Text Controlled: text-controlled video-to-audio demo using ComfyUI/input/examples/generated/02_tcv2a_text_controlled/tcv2a_video.mp4 and prompt \"thunder strike\"."
   },
   "version": 0.4
 }

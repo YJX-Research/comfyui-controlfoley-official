@@ -1,14 +1,14 @@
 [project]
 name = "ComfyUI-ControlFoley"
 description = "Official ComfyUI custom nodes and full-task workflows for ControlFoley, supporting controllable SFX generation, video-to-audio, text-to-audio, text-controlled video-to-audio, and audio-conditioned video-to-audio."
-version = "0.1.0"
+version = "0.1.1"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
   "av>=14.0.1",
   "colorlog>=6.9.0",
   "einops>=0.8.0",
-  "huggingface-hub>=0.26.2",
+  "huggingface-hub[hf_xet]>=0.26.2",
   "laion-clap>=1.1.6",
   "librosa>=0.11.0",
   "nnAudio>=0.3.3",

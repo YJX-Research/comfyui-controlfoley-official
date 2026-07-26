@@ -1,7 +1,7 @@
 av>=14.0.1
 colorlog>=6.9.0
 einops>=0.8.0
-huggingface-hub>=0.26.2
+huggingface-hub[hf_xet]>=0.26.2
 laion-clap>=1.1.6
 librosa>=0.11.0
 nnAudio>=0.3.3

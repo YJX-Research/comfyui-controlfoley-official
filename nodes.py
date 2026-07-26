@@ -32,13 +32,14 @@ CONTROLFOLEY_AUDIO_FILE_TYPE = "CONTROLFOLEY_AUDIO_FILE"
 CONTROLFOLEY_VIDEO_FILE_TYPE = "CONTROLFOLEY_VIDEO_FILE"
 MIN_VIDEO_DURATION = 0.7
 DEFAULT_TEXT_ONLY_DURATION = 10.0
+DEFAULT_VIDEO_DURATION = 8.0
 MAX_GENERATION_DURATION = 30.0
 FIXED_STEP_SENTINEL = "fixed"
 DEFAULT_INFERENCE_STEPS = 25
 VIDEO_CACHE_MAX_ITEMS = 2
-DEFAULT_CONTROLFOLEY_SOURCE_DIR = "path/to/controlfoley"
+DEFAULT_CONTROLFOLEY_SOURCE_DIR = "controlfoley"
 DEFAULT_MODEL_WEIGHTS_DIR = "path/to/model_weights"
-DEFAULT_DEMO_VIDEO_PATH = "assets/v2a_video.mp4"
+DEFAULT_DEMO_VIDEO_PATH = "examples/generated/01_v2a_basic/v2a_video.mp4"
 DEFAULT_TEXT_PROMPT = "A bird sings melodically in a forest"
 
 
@@ -83,11 +84,19 @@ def _temp_video_path(prefix: str) -> Path:
     return _temp_dir() / f"{prefix}_{time.time_ns()}.mp4"
 
 
+def _node_dir() -> Path:
+    return Path(__file__).resolve().parent
+
+
+def _comfy_root_dir() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
 def _default_weights_dir() -> Path:
     env_dir = os.environ.get("CONTROLFOLEY_WEIGHTS_DIR")
     if env_dir:
         return Path(env_dir).expanduser().resolve()
-    comfy_dir = Path(__file__).resolve().parents[2]
+    comfy_dir = _comfy_root_dir()
     packaged_dir = comfy_dir.parent / "controlfoley_workspace" / "model_weights"
     if packaged_dir.exists():
         return packaged_dir.resolve()
@@ -105,12 +114,48 @@ def _resolve_path(path_text: str, base: Optional[Path] = None) -> Optional[Path]
         roots = []
         if base is not None:
             roots.append(base)
-        roots.extend([_input_dir(), Path.cwd()])
+        roots.extend([_input_dir(), _node_dir(), _comfy_root_dir(), Path.cwd()])
         for root in roots:
             candidate = root / path
             if candidate.exists():
                 return candidate.resolve()
     return path.resolve()
+
+
+def _looks_like_controlfoley_source(path: Path) -> bool:
+    return (path / "demo.py").exists() and (path / "controlfoley" / "inference_utils.py").exists()
+
+
+def _candidate_controlfoley_source_dirs(text: str) -> list[Path]:
+    candidates: list[Path] = []
+    env_dir = os.environ.get("CONTROLFOLEY_SOURCE_DIR")
+    if env_dir:
+        candidates.append(Path(env_dir).expanduser())
+    if text and text not in {"path/to/controlfoley", "controlfoley"}:
+        resolved = _resolve_path(text)
+        if resolved is not None:
+            candidates.append(resolved)
+    candidates.extend([
+        _node_dir() / "controlfoley",
+        _node_dir().parent / "controlfoley",
+        _comfy_root_dir() / "controlfoley",
+        _comfy_root_dir() / "custom_nodes" / "controlfoley",
+        Path.cwd() / "controlfoley",
+    ])
+    return candidates
+
+
+def _resolve_controlfoley_source_dir(path_text: str) -> Optional[Path]:
+    text = (path_text or "").strip().strip('"')
+    for candidate in _candidate_controlfoley_source_dirs(text):
+        candidate = candidate.expanduser().resolve()
+        if _looks_like_controlfoley_source(candidate):
+            return candidate
+    if text:
+        resolved = _resolve_path(text)
+        if resolved is not None:
+            return resolved
+    return None
 
 
 def _resolve_weights_dir(path_text: str) -> Path:
@@ -380,11 +425,36 @@ def _ensure_public_controlfoley_repo(source_dir: Path) -> None:
     ]
     missing = [str(p) for p in required if not p.exists()]
     if missing:
-        raise FileNotFoundError(
-            "ControlFoley public source directory is incomplete. Clone "
-            "https://github.com/xiaomi-research/controlfoley and pass that path. Missing: "
-            + ", ".join(missing)
+        hint = (
+            "Clone https://github.com/xiaomi-research/controlfoley and set "
+            "controlfoley_source_dir to that folder. The node also auto-detects "
+            "a sibling or ComfyUI-root folder named 'controlfoley'."
         )
+        raise FileNotFoundError(
+            "ControlFoley public source directory is incomplete. "
+            f"Checked: {source_dir}. Missing: {', '.join(missing)}. {hint}"
+        )
+
+
+def _patch_timbre_dtype_alignment(net: Any) -> None:
+    if getattr(net, "_controlfoley_timbre_dtype_patch", False):
+        return
+    original = getattr(net, "preprocess_conditions", None)
+    projection = getattr(net, "timbre_input_proj", None)
+    if original is None or projection is None:
+        return
+
+    def _patched_preprocess_conditions(clip_f, visual_f, sync_f, text_f, audio_f, timbre_f):
+        try:
+            param = next(projection.parameters())
+            if timbre_f is not None and (timbre_f.dtype != param.dtype or timbre_f.device != param.device):
+                timbre_f = timbre_f.to(device=param.device, dtype=param.dtype)
+        except StopIteration:
+            pass
+        return original(clip_f, visual_f, sync_f, text_f, audio_f, timbre_f)
+
+    net.preprocess_conditions = _patched_preprocess_conditions
+    net._controlfoley_timbre_dtype_patch = True
 
 
 @dataclass
@@ -558,6 +628,8 @@ def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str
         if low_vram and original_musicgen is not None:
             feature_extractor.MusicGen = original_musicgen
 
+    _patch_timbre_dtype_alignment(net)
+
     runtime = ControlFoleyRuntime(
         source_dir=source_dir,
         weights_dir=weights_dir,
@@ -660,7 +732,47 @@ def _resolve_reference_audio_path(value) -> Optional[Path]:
     resolved = _resolve_path(text)
     if resolved is None or not resolved.exists():
         raise FileNotFoundError(f"Reference audio not found: {text}")
+    if not resolved.is_file():
+        raise ValueError(f"Reference audio path must be a file, not a directory: {text}")
     return resolved
+
+
+def _relative_to(path: Path, root: Path) -> Optional[Path]:
+    try:
+        return path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return None
+
+
+def _ui_file_entry(path: Path, file_type: str = "output") -> dict[str, str]:
+    base = _output_dir() if file_type == "output" else _input_dir()
+    rel = _relative_to(path, base)
+    subfolder = str(rel.parent).replace("\\", "/") if rel is not None and str(rel.parent) != "." else ""
+    return {"filename": path.name, "subfolder": subfolder, "type": file_type}
+
+
+def _preview_video_path(path: Path) -> Path:
+    if _relative_to(path, _output_dir()) is not None or _relative_to(path, _input_dir()) is not None:
+        return path
+    mtime_ns, size = _path_signature(path)
+    preview_dir = _output_dir() / "controlfoley" / "previews"
+    preview_dir.mkdir(parents=True, exist_ok=True)
+    preview_path = preview_dir / f"{path.stem}_{size}_{mtime_ns}{path.suffix}"
+    if not preview_path.exists():
+        shutil.copyfile(path, preview_path)
+    return preview_path
+
+
+def _video_ui(path: Path) -> dict[str, list[dict[str, str]]]:
+    preview_path = _preview_video_path(path)
+    file_type = "input" if _relative_to(preview_path, _input_dir()) is not None else "output"
+    entry = _ui_file_entry(preview_path, file_type)
+    entry["format"] = "video/mp4"
+    return {"gifs": [entry]}
+
+
+def _audio_ui(path: Path) -> dict[str, list[dict[str, str]]]:
+    return {"audio": [_ui_file_entry(path, "output")]}
 
 
 class LoadControlFoleyDependencies:
@@ -681,7 +793,7 @@ class LoadControlFoleyDependencies:
     CATEGORY = CATEGORY
 
     def load_dependencies(self, controlfoley_source_dir, model_weights_dir, low_vram, auto_download):
-        source_dir = _resolve_path(controlfoley_source_dir)
+        source_dir = _resolve_controlfoley_source_dir(controlfoley_source_dir)
         weights_dir = _resolve_weights_dir(model_weights_dir)
         if source_dir is None:
             raise ValueError("ControlFoley source directory is required.")
@@ -723,7 +835,7 @@ class LoadControlFoleyModel:
             weights_dir = dependencies.weights_dir
             low_vram = dependencies.low_vram
         else:
-            source_dir = _resolve_path(controlfoley_source_dir)
+            source_dir = _resolve_controlfoley_source_dir(controlfoley_source_dir)
             weights_dir = _resolve_weights_dir(model_weights_dir)
         if source_dir is None:
             raise ValueError("ControlFoley source and weights directories are required.")
@@ -889,7 +1001,7 @@ class ControlFoleySimpleGenerate:
             silent = _make_silent_audio(float(duration), 44100)
             return (silent, int(silent["sample_rate"]), 0.0, 0.0, "Generation disabled; returned silence.")
         dependencies = ControlFoleyDependencies(
-            source_dir=_resolve_path(controlfoley_source_dir) or Path(controlfoley_source_dir),
+            source_dir=_resolve_controlfoley_source_dir(controlfoley_source_dir) or Path(controlfoley_source_dir),
             weights_dir=_resolve_weights_dir(model_weights_dir),
             low_vram=bool(low_vram),
         )
@@ -909,13 +1021,14 @@ class LoadControlFoleyVideo:
         return {
             "required": {
                 "video_path": ("STRING", {"default": DEFAULT_DEMO_VIDEO_PATH}),
-                "duration": ("FLOAT", {"default": MAX_GENERATION_DURATION, "min": MIN_VIDEO_DURATION, "max": MAX_GENERATION_DURATION, "step": 0.5, "tooltip": "Upper limit for video generation. The actual output follows the input video length up to 30s."}),
+                "duration": ("FLOAT", {"default": DEFAULT_VIDEO_DURATION, "min": MIN_VIDEO_DURATION, "max": MAX_GENERATION_DURATION, "step": 0.5, "tooltip": "Upper limit for video generation. The actual output follows the input video length up to 30s."}),
             }
         }
 
     RETURN_TYPES = (CONTROLFOLEY_VIDEO_TYPE, "STRING")
     RETURN_NAMES = ("controlfoley_video", "video_path")
     FUNCTION = "load"
+    OUTPUT_NODE = True
     CATEGORY = CATEGORY
 
     @classmethod
@@ -930,9 +1043,12 @@ class LoadControlFoleyVideo:
         resolved = _resolve_path(video_path)
         if resolved is None or not resolved.exists():
             raise FileNotFoundError(f"Input video not found: {video_path}")
+        if not resolved.is_file():
+            raise ValueError(f"Input video path must be a file, not a directory: {video_path}")
         source_duration = _media_duration(resolved)
         effective_duration = _bounded_duration(source_duration or duration, float(duration))
-        return ({"path": resolved, "duration": effective_duration}, str(resolved))
+        result = ({"path": resolved, "duration": effective_duration}, str(resolved))
+        return {"ui": _video_ui(resolved), "result": result}
 
 
 class ControlFoleyGenerate:
@@ -1070,11 +1186,14 @@ class ControlFoleyGenerate:
                 "fm": fm,
                 "rng": generator,
                 "cfg_strength": float(guidance_scale),
-                "staged_offload": bool(staged_offload or runtime.low_vram),
             }
             generate_params = inspect.signature(runtime.inference_utils.generate).parameters
-            supports_clip_batch = "clip_batch_size_multiplier" in generate_params
-            supports_sync_batch = "sync_batch_size_multiplier" in generate_params
+            supports_kwargs = any(param.kind == inspect.Parameter.VAR_KEYWORD for param in generate_params.values())
+            supports_staged_offload = "staged_offload" in generate_params or supports_kwargs
+            supports_clip_batch = "clip_batch_size_multiplier" in generate_params or supports_kwargs
+            supports_sync_batch = "sync_batch_size_multiplier" in generate_params or supports_kwargs
+            if supports_staged_offload:
+                generate_kwargs["staged_offload"] = bool(staged_offload or runtime.low_vram)
             if supports_clip_batch:
                 generate_kwargs["clip_batch_size_multiplier"] = int(clip_batch_size_multiplier)
             if supports_sync_batch:
@@ -1151,11 +1270,12 @@ class SaveControlFoleyAudio:
         sf.write(str(path), array, int(audio["sample_rate"]))
         saved_audio = dict(audio)
         saved_audio["stem"] = str(path.with_suffix(""))
-        return (
+        result = (
             saved_audio,
             {"path": path, "sample_rate": int(audio["sample_rate"]), "stem": str(path.with_suffix(""))},
             str(path),
         )
+        return {"ui": _audio_ui(path), "result": result}
 
 
 class MuxControlFoleyAudioToVideo:
@@ -1207,7 +1327,8 @@ class MuxControlFoleyAudioToVideo:
             )
             out_path = Path(full_output_folder) / f"{filename}_{counter:05}_.mp4"
         runtime.inference_utils.make_video(video_info, out_path, waveform.cpu(), int(audio["sample_rate"]))
-        return ({"path": out_path}, str(out_path))
+        result = ({"path": out_path}, str(out_path))
+        return {"ui": _video_ui(out_path), "result": result}
 
 
 class UnloadControlFoleyModel:

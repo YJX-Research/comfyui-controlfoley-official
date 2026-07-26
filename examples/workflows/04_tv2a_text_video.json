@@ -14,7 +14,7 @@
         190
       ],
       "widgets_values": [
-        "path/to/controlfoley",
+        "controlfoley",
         "path/to/model_weights",
         "large_44k",
         "auto",
@@ -45,8 +45,8 @@
         100
       ],
       "widgets_values": [
-        "assets/tv2a_video.mp4",
-        30.0
+        "examples/generated/04_tv2a_text_video/tv2a_video.mp4",
+        8.0
       ],
       "outputs": [
         {
@@ -73,7 +73,7 @@
       "widgets_values": [
         "skateboarding",
         "",
-        30.0,
+        8.0,
         42,
         "fixed",
         "25",
@@ -238,7 +238,7 @@
   "groups": [],
   "config": {},
   "extra": {
-    "info": "04 TV2A Text Video: text + video to audio demo using ComfyUI/input/assets/tv2a_video.mp4 and prompt \"skateboarding\"."
+    "info": "04 TV2A Text Video: text + video to audio demo using ComfyUI/input/examples/generated/04_tv2a_text_video/tv2a_video.mp4 and prompt \"skateboarding\"."
   },
   "version": 0.4
 }

@@ -23,7 +23,7 @@
         }
       ],
       "widgets_values": [
-        "path/to/controlfoley",
+        "controlfoley",
         "path/to/model_weights",
         false,
         true
@@ -57,7 +57,7 @@
         }
       ],
       "widgets_values": [
-        "path/to/controlfoley",
+        "controlfoley",
         "path/to/model_weights",
         "large_44k",
         "auto",

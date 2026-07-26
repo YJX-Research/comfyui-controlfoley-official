@@ -52,6 +52,8 @@ This repository is published at `YJX-Research/comfyui-controlfoley-official`; th
 
 `requirements.txt` does not install `torch`, `torchaudio`, or `torchvision`; use the versions from your ComfyUI/PyTorch CUDA environment.
 
+> **Note:** `requirements.txt` uses minimum-version ranges, so running `pip install -r requirements.txt` may upgrade shared packages (for example `numpy` or `transformers`) that your existing ComfyUI environment depends on. On an already-working ComfyUI install, prefer installing only the packages that are actually missing, one at a time.
+
 Manual source setup (optional, for offline or custom layouts — otherwise `auto_fetch_source` handles this):
 
 ```bash
@@ -69,7 +71,7 @@ python main.py
 
 1. Install ComfyUI.
 2. Clone this custom node into `ComfyUI/custom_nodes`.
-3. Install requirements with `pip install -r requirements.txt`; keep the existing ComfyUI PyTorch stack.
+3. Install requirements with `pip install -r requirements.txt` (see the note above about version ranges on existing environments); keep the existing ComfyUI PyTorch stack.
 4. The public ControlFoley source is fetched automatically on first run (`auto_fetch_source`, enabled by default). To manage it yourself, clone it as `controlfoley` next to this custom node or under the ComfyUI root, or set `CONTROLFOLEY_SOURCE_DIR`.
 5. Start ComfyUI.
 6. Open the bundled templates from ComfyUI Browse Templates or load a workflow from `examples/workflows`.

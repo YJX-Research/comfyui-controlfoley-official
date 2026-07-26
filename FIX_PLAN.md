@@ -196,6 +196,27 @@ README 改动同样一条一 commit、同样过 Codex review。
 
 ---
 
+## 最终回归结果(全部修复落地后,重启实跑)
+
+方法:无头启动 ComfyUI(与 Desktop 相同 base 目录与 venv),七个模板出厂状态零改动、同一进程依次运行;画布验收通过浏览器驱动前端排队实跑 + DOM 检查。
+
+| 模板 | 结果 | 耗时(s) | 说明 |
+| --- | --- | --- | --- |
+| 01_v2a_basic | 通过 | 80.73 | 首个运行,含模型冷加载(修复前基线 81.01) |
+| 02_tcv2a_text_controlled | 通过 | 10.72 | 热载 |
+| 03_acv2a_audio_controlled | 通过 | 10.42 | 热载;AC-V2A bf16 timbre 路径正常 |
+| 04_tv2a_text_video | 通过 | 12.49 | 热载 |
+| 05_t2a_basic | 通过 | 7.81 | 热载;末尾 Unload 生效 |
+| 06_advanced_chain | 通过 | 53.82 | Unload 后重载;无 Triton 平台打印 compile 跳过说明 |
+| 07_simple_generate | 通过 | 52.14 | Unload 后重载;修复 F3.12 前此位置曾恶化到 800s |
+
+- 全程零 `ModuleNotFoundError`;日志零 "video is too short" / "Truncating" 告警。
+- 画布证据(浏览器排队实跑 + DOM):Loader 节点 `video-preview` widget + `<video>` readyState=4(temp 副本经 `/view` 200);Muxer 节点 `video-preview` widget(输出 mp4 经 `/view` 200);Save Audio 节点 `audioUI` widget + `<audio>` src 指向输出 wav、readyState=4。三类预览均实证渲染;`app.nodeOutputs` 中三节点 ui 契约与本体一致。
+- 任务二"源码不在场"端到端:改名藏起源码 → 重启 → 首次运行自动从 GitHub 浅克隆 pin `6858cd1` → 完整生成保存,67.28s;另有 file:// 机制五用例、坏 URL、目标不完整、开关关闭四类用例全过。
+- 专项:is_file 两例报可读 ValueError;staged_offload=false 跑通(28.9s);采样中段取消 0.96s 中断(每 4 步同步,吞吐损耗 ~2%);`HF_HUB_OFFLINE=1` + 完整缓存加载正常。
+
+---
+
 ## 附录 A:给上游的 PR 描述草稿(audio_model.py timbre dtype)
 
 > **Fix dtype mismatch for timbre features in `preprocess_conditions`**

@@ -755,10 +755,14 @@ def _throw_if_interrupted() -> None:
 def _interruptible_flow_matching_cls(base_cls):
     class _InterruptibleFlowMatching(base_cls):
         # The upstream euler loop has no interrupt checks, so ComfyUI's Cancel
-        # only took effect after the whole sampling loop finished. Checking at
-        # every step lets a cancel abort within one step.
+        # only took effect after the whole sampling loop finished. CUDA kernels
+        # are enqueued asynchronously — without a sync the Python loop races
+        # through all steps in seconds and the checks pass before the user ever
+        # cancels — so wait for the GPU to catch up before checking each step.
         def run_t0_to_t1(self, fn, x0, t0, t1):
             def _checked_fn(t, x):
+                if torch.cuda.is_available():
+                    torch.cuda.synchronize()
                 _throw_if_interrupted()
                 return fn(t, x)
             return super().run_t0_to_t1(_checked_fn, x0, t0, t1)

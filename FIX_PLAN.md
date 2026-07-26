@@ -142,6 +142,16 @@
 - **验证**:无。
 - **风险**:无。
 
+### F3.11 无 Triton 平台上 torch.compile 惰性埋雷 + 缓存污染(回归中新发现,计划外新增)
+- **问题**:出厂模板回归发现 06_advanced_chain 失败:`Torch Compile` 节点 `compile_encoders=True` 调用 `feature_utils.compile()`,Windows 无 Triton 时 `torch.compile` 惰性编译在首次 `encode_text` 才抛 `TritonMissing`;且编译是对 `_MODEL_CACHE` 共享 runtime 的原地修改,07_simple_generate(compile=false、命中同一缓存)也随之失败。
+- **修法**:新增 `_torch_compile_available()`(`torch.utils._triton.has_triton` 优先,回退 `import triton`);TorchCompile 节点与 Model Loader 的 compile_encoders 路径在不可用时跳过并打印说明。有 Triton 的平台行为不变。
+- **验证**:修复后 06 success(63.7s,日志出现 skip 说明)、07 不再被污染。
+
+### F3.12 Unload 节点不真正释放显存,反复加载卸载导致显存累积(回归中新发现,计划外新增)
+- **问题**:出厂顺序 05→06→07(05/06 各带 Unload 节点)实测:Unload 只 pop `_MODEL_CACHE`,runtime 对象仍被 ComfyUI 执行器输出缓存引用,VRAM 未释放;07 全量重载出第二份模型 → VRAM 溢出到 CUDA sysmem fallback,单次运行从 ~8s 恶化到 800s。这正是审计方向"显存与模型卸载"预判的问题。
+- **修法**:(a) Unload 调用 `runtime.unload()`(net/feature_utils 置 None)真正释放张量;(b) 全局 `_UNLOAD_EPOCH` 由 Unload 递增,Loader 的 `IS_CHANGED` 返回该纪元,任何 unload 后强制重载,杜绝执行器把被掏空的 runtime 喂给下游;(c) Generate 对 `net is None` 给出可读报错兜底。
+- **验证**:见回归表 round 3。
+
 ### 只验证、不改码(或待作者确认)的项
 - **is_file() 校验实测**(nodes.py:736、1046-1047):把目录填进 `video_path` / `reference_audio_path`,确认报可读错误而非 `av` 的 PermissionError。结果记入回归表。
 - **05/06/07 三个 wav 是同一文件**(SHA256 实测相同,均 `af3d7709...`):按约定**换之前先问仓库作者**,本批不动 `examples/generated/`,列入 PR"已知残留"。
@@ -245,6 +255,13 @@ README 改动同样一条一 commit、同样过 Codex review。
 
 ### F4.R2(7078728)/F4.R3(ea03c12)/F4.R4(4638b8c)/F4.R9(9b28507)
 - 直接落地。R4 后用 grep 复核仓库内不再有 `examples/workflows` 活引用;R3 权重体量按实测 16 GB(核心 11 GB + 外部 5 GB)写入;R11 四个外链实测均 200。
+
+### F3.11(03b4f05)
+- Codex 未发现实际缺陷,确认两个原地编译入口均已守卫、有 Triton 平台行为不变。
+
+### F3.12(8a0e8d1 + F3.12b bc83a38)
+- Codex 两条:(1) `key in _MODEL_CACHE` token 在 unload→rerun→unload 循环下值不变会漏跑;(2) IS_CHANGED 中连接输入(dependencies)传入为 None,按 widget 算 key 会算错。**均接受**——F3.12b 改为全局 `_UNLOAD_EPOCH` 方案,不再在 IS_CHANGED 里算 key。
+- F3.12b 复审:Codex 指出全局纪元粒度粗,任一 unload 会让所有 Loader 变脏、独立分支的下游生成被连带重跑。**接受为已知残留、不改**:per-model 精确失效需要在 IS_CHANGED 里算 key,而连接输入不可用(即第 2 条否掉的路);粗粒度多付的是多模型并存工作流的重复计算,换来"绝不把已卸载模型喂给下游"的安全性;出厂 7 模板均为单模型链,不受影响。已列入 PR"已知残留"。
 
 ### F4.R5(7a3885e + R5b 65792e0)
 - Codex 指出 Known Issues 段还有一句未加限定——**接受**,R5b 修正。其余段落与 `supports_staged_offload` 探测逻辑核对一致。

@@ -311,7 +311,7 @@ See `docs/known_issues.md`.
 
 Important alpha limitations:
 
-- Use `staged_offload=true` for video/reference-audio workflows on smaller GPUs.
+- Use `staged_offload=true` for video/reference-audio workflows on smaller GPUs when the selected source implements it (the public upstream source ignores it with a console note).
 - Missing weights and known Hugging Face dependency models are downloaded during model loading.
 - `ControlFoley Video-Audio Muxer` currently supports replace-original-audio mode only; mix mode is planned.
 - The public ControlFoley inference path is CUDA-only in this node.

@@ -760,11 +760,17 @@ def _interruptible_flow_matching_cls(base_cls):
         # through all steps in seconds and the checks pass before the user ever
         # cancels — so wait for the GPU to catch up before checking each step.
         def run_t0_to_t1(self, fn, x0, t0, t1):
+            step_counter = {"n": 0}
+
             def _checked_fn(t, x):
-                if torch.cuda.is_available():
+                # Syncing every step costs ~10% throughput; every 4th step keeps
+                # the abort latency around a second at ~2% cost.
+                step_counter["n"] += 1
+                if step_counter["n"] % 4 == 1 and torch.cuda.is_available():
                     torch.cuda.synchronize()
                 _throw_if_interrupted()
                 return fn(t, x)
+
             return super().run_t0_to_t1(_checked_fn, x0, t0, t1)
 
     return _InterruptibleFlowMatching

@@ -510,6 +510,11 @@ def _auto_fetch_controlfoley_source() -> Optional[Path]:
             )
             return None
         except Exception as exc:
+            if _looks_like_controlfoley_source(target):
+                # Another process (sharing this ComfyUI root) landed the source while we
+                # were fetching; use it instead of reporting a failure.
+                print(f"[ControlFoley] ControlFoley source already fetched elsewhere: {target}")
+                return target
             print(f"[ControlFoley] ControlFoley source auto-fetch failed: {exc}")
             return None
         finally:

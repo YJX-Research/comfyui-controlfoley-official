@@ -74,7 +74,7 @@ python main.py
 3. Install requirements with `pip install -r requirements.txt` (see the note above about version ranges on existing environments); keep the existing ComfyUI PyTorch stack.
 4. The public ControlFoley source is fetched automatically on first run (`auto_fetch_source`, enabled by default). To manage it yourself, clone it as `controlfoley` next to this custom node or under the ComfyUI root, or set `CONTROLFOLEY_SOURCE_DIR`.
 5. Start ComfyUI.
-6. Open the bundled templates from ComfyUI Browse Templates or load a workflow from `examples/workflows`.
+6. Open the bundled templates from ComfyUI Browse Templates or load a workflow from `example_workflows`.
 7. Leave `model_weights_dir` as `path/to/model_weights` to use the default download directory, or set a custom local path.
 8. The bundled workflow templates point to demo media under this node's `examples/generated` folder. You can also copy inputs into `ComfyUI/input/assets` or edit the workflow paths.
 9. Run the workflow. Output nodes show audio/video previews and save files under `ComfyUI/output/controlfoley`.
@@ -134,17 +134,17 @@ comfyui-controlfoley/
   docs/
     known_issues.md
     vram_speed_log.md
+  example_workflows/
+    01_v2a_basic.json
+    02_tcv2a_text_controlled.json
+    03_acv2a_audio_controlled.json
+    04_tv2a_text_video.json
+    05_t2a_basic.json
+    06_advanced_chain.json
+    07_simple_generate.json
   examples/
     inputs/README.md
-    generated/README.md
-    workflows/
-      01_v2a_basic.json
-      02_tcv2a_text_controlled.json
-      03_acv2a_audio_controlled.json
-      04_tv2a_text_video.json
-      05_t2a_basic.json
-      06_advanced_chain.json
-      07_simple_generate.json
+    generated/
 ```
 
 Do not commit ControlFoley weights, Hugging Face caches, ComfyUI outputs, or local runtime files.
@@ -164,7 +164,7 @@ Do not commit ControlFoley weights, Hugging Face caches, ComfyUI outputs, or loc
 
 ## 🧪 Demo Workflows
 
-Workflow templates are in `examples/workflows`:
+Workflow templates are in `example_workflows` (also available in ComfyUI Browse Templates):
 
 | File | Task | Outputs |
 | --- | --- | --- |

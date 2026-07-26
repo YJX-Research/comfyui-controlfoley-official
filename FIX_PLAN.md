@@ -208,6 +208,11 @@ README 改动同样一条一 commit、同样过 Codex review。
 ### F1.4(44eb13a)
 - Codex 报 7 条 "widgets_values 里 'fixed' 后多了 '25'"。**全部拒绝**:`seed` 是 INT widget,前端为其附加 `control_after_generate` widget 且序列化在 seed 值之后,`[42, "fixed", "25", 4.5]` 依次是 seed / control_after_generate / num_inference_steps / guidance_scale;README 明确记载"control_after_generate 设为 fixed、steps 设为 25",且这批模板两轮验收均按预期参数跑通,若真错位布尔字段早已崩溃。Codex 漏算了附加 widget。
 
-### F2.1(8456f9b)
+### F1.5(a9884a1)
+- Codex 未发现实际缺陷;确认 optional 位置不打乱旧 workflow widgets_values 对位。
+- 实测:重启后 SaveAudio 节点出现 `audioUI` widget,运行后 `<audio>` 元素 src 指向 `/view?...wav`、readyState=4 可播放。
+
+### F3.3(c662cbd + F3.3b 加固)
+- Codex 两条:(1) VFR 下 `(frames-1)/average_rate` 非精确——**部分接受**:加 `min(候选值, 容器时长)` 钳制防过冲;完整解码求末帧 PTS 的方案**拒绝**(loader 路径上解码整只视频代价过高,VFR 残余误差的后果只是原有告警偶发出现,非新回归);(2) 音频将比视频短约一帧——**接受为有意取舍**:修复前上游同样会把生成截断到帧网格,实际输出时长差 8-40ms,换取结构性告警根治;不为此增加"抽帧时长/输出时长"双管道。
 - 实测记录:本地 file:// 镜像五用例全 PASS(clone 成功/幂等/坏 URL 干净失败无残留/目标存在但不完整时拒绝且不动用户目录/开关关不 clone);本机 GitHub 直连可达,上游 HEAD 即 pin 的 `6858cd1`。
 - Codex 指出:并发保护仅进程内 Lock,两个共享同一 ComfyUI 根目录的进程同时 fetch 时,后完成者 rename 失败会误报失败。**部分接受**——在失败路径复查目标目录是否已被他人落地完整,是则直接采用(F2.1b 修入);**拒绝**跨进程锁文件方案:双进程共根目录本身是罕见部署,复查已覆盖其后果,锁文件反而引入陈旧锁清理问题。

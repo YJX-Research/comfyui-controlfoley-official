@@ -311,6 +311,10 @@ def _media_duration(path: Path) -> Optional[float]:
                 rate = stream.average_rate
                 if frames > 1 and rate:
                     duration = float((frames - 1) / rate)
+                    # average_rate is approximate for variable-frame-rate files;
+                    # never report more than the container itself claims.
+                    if container.duration is not None:
+                        duration = min(duration, float(container.duration) / 1_000_000.0)
                     if duration > 0:
                         return duration
             if container.duration is not None:

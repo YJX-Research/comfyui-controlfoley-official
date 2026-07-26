@@ -797,6 +797,11 @@ def _patch_bigvgan_from_pretrained() -> None:
     _compat_from_pretrained._controlfoley_compat = True
     bigvgan_cls._from_pretrained = _compat_from_pretrained
 
+def _runtime_cache_key(source_dir: Path, weights_dir: Path, variant: str, device: str, precision: str, low_vram: bool, compile_encoders: bool) -> tuple:
+    device = _device_from_choice(device)
+    return (str(source_dir), str(weights_dir), variant, f"{device}:{precision}", low_vram, compile_encoders)
+
+
 def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str, precision: str, low_vram: bool, compile_encoders: bool) -> ControlFoleyRuntime:
     device = _device_from_choice(device)
     if device != "cuda":
@@ -805,7 +810,7 @@ def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str
             "Use device='cuda' until upstream CPU/MPS support is available."
         )
 
-    key = (str(source_dir), str(weights_dir), variant, f"{device}:{precision}", low_vram, compile_encoders)
+    key = _runtime_cache_key(source_dir, weights_dir, variant, device, precision, low_vram, compile_encoders)
     if key in _MODEL_CACHE:
         return _MODEL_CACHE[key]
 
@@ -1107,6 +1112,20 @@ class LoadControlFoleyModel:
     RETURN_NAMES = ("controlfoley_model",)
     FUNCTION = "load"
     CATEGORY = CATEGORY
+
+    @classmethod
+    def IS_CHANGED(cls, controlfoley_source_dir, model_weights_dir, variant, device, precision, low_vram, compile_encoders, auto_fetch_source=True, dependencies=None):
+        # Force a re-load after the Unload node cleared the cache; otherwise the
+        # executor could hand downstream nodes a stale, already-unloaded runtime.
+        if dependencies is not None:
+            source_dir, weights_dir, low_vram = dependencies.source_dir, dependencies.weights_dir, dependencies.low_vram
+        else:
+            source_dir = _resolve_controlfoley_source_dir(controlfoley_source_dir)
+            weights_dir = _resolve_weights_dir(model_weights_dir)
+        if source_dir is None:
+            return float("nan")
+        key = _runtime_cache_key(source_dir, weights_dir, variant, device, precision, bool(low_vram), bool(compile_encoders))
+        return f"{key}:{key in _MODEL_CACHE}"
 
     def load(self, controlfoley_source_dir, model_weights_dir, variant, device, precision, low_vram, compile_encoders, auto_fetch_source=True, dependencies=None):
         if dependencies is not None:
@@ -1433,6 +1452,11 @@ class ControlFoleyGenerate:
                        clip_batch_size_multiplier=40, sync_batch_size_multiplier=40,
                        video=None, video_input=None, images=None, reference_audio_path="", image_fps=24.0):
         runtime: ControlFoleyRuntime = controlfoley_model
+        if runtime.net is None or runtime.feature_utils is None:
+            raise RuntimeError(
+                "This ControlFoley model was unloaded. Re-run the ControlFoley Model Loader "
+                "(or restart ComfyUI) to load it again."
+            )
         if runtime.device != "cuda":
             raise RuntimeError("ControlFoley public inference is currently CUDA-only in this node.")
         if torch.cuda.is_available():
@@ -1674,6 +1698,11 @@ class UnloadControlFoleyModel:
         keys = [k for k, v in _MODEL_CACHE.items() if v is controlfoley_model]
         for key in keys:
             _MODEL_CACHE.pop(key, None)
+        # Popping the cache alone does not free VRAM: ComfyUI's execution cache
+        # still references the runtime object, so drop its tensors explicitly.
+        # (The loader's IS_CHANGED forces a re-load before the gutted runtime
+        # could reach a generation node again.)
+        controlfoley_model.unload()
         _VIDEO_CACHE.clear()
         gc.collect()
         if torch.cuda.is_available():

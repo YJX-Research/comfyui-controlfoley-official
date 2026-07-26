@@ -20,7 +20,8 @@
         "auto",
         "bf16",
         false,
-        false
+        false,
+        true
       ],
       "outputs": [
         {
@@ -38,11 +39,11 @@
       "type": "LoadControlFoleyVideo",
       "pos": [
         80,
-        330
+        340
       ],
       "size": [
-        320,
-        100
+        340,
+        420
       ],
       "widgets_values": [
         "examples/generated/04_tv2a_text_video/tv2a_video.mp4",
@@ -56,6 +57,11 @@
             2,
             6
           ]
+        },
+        {
+          "name": "video_output",
+          "type": "VIDEO",
+          "links": null
         }
       ]
     },
@@ -118,7 +124,7 @@
       ],
       "size": [
         330,
-        120
+        190
       ],
       "widgets_values": [
         "controlfoley/tv2a_video_output",
@@ -156,11 +162,11 @@
       "type": "MuxControlFoleyAudioToVideo",
       "pos": [
         1020,
-        320
+        380
       ],
       "size": [
         360,
-        150
+        440
       ],
       "widgets_values": [
         "controlfoley/tv2a_video_output.mp4",

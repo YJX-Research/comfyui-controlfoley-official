@@ -92,6 +92,35 @@ def _temp_video_path(prefix: str) -> Path:
     return _temp_dir() / f"{prefix}_{time.time_ns()}.mp4"
 
 
+_TEMP_MAX_AGE_SEC = 48 * 3600
+
+
+def _cleanup_stale_temp_files() -> None:
+    # Intermediate MP4s written for VIDEO/IMAGE inputs must outlive the run that
+    # created them (the muxer re-reads the same path), so they are reaped by age
+    # at startup instead of being deleted right after generation.
+    temp_dir = _output_dir() / "controlfoley" / "temp"
+    if not temp_dir.is_dir():
+        return
+    cutoff = time.time() - _TEMP_MAX_AGE_SEC
+    removed = 0
+    for item in temp_dir.iterdir():
+        try:
+            if item.is_file() and item.stat().st_mtime < cutoff:
+                item.unlink()
+                removed += 1
+        except Exception as exc:
+            print(f"[ControlFoley] Could not remove stale temp file {item.name}: {exc}")
+    if removed:
+        print(f"[ControlFoley] Removed {removed} stale temp file(s) from {temp_dir}")
+
+
+try:
+    _cleanup_stale_temp_files()
+except Exception as _cleanup_exc:
+    print(f"[ControlFoley] Temp cleanup skipped: {_cleanup_exc}")
+
+
 def _node_dir() -> Path:
     return Path(__file__).resolve().parent
 

@@ -339,7 +339,8 @@ def _media_duration(path: Path) -> Optional[float]:
                     duration = float(stream.duration * stream.time_base)
                     if duration > 0:
                         return duration
-    except Exception:
+    except Exception as exc:
+        print(f"[ControlFoley] Could not probe media duration of {path.name}: {exc}")
         return None
     return None
 
@@ -438,8 +439,8 @@ def _device_from_choice(device: str) -> str:
             torch_device = model_management.get_torch_device()
             if torch_device is not None:
                 return str(torch_device).split(":", 1)[0]
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[ControlFoley] Could not query ComfyUI torch device, probing manually: {exc}")
         if torch.cuda.is_available():
             return "cuda"
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -453,8 +454,8 @@ def _free_vram_for_low_vram_load() -> None:
         import comfy.model_management as model_management
 
         model_management.unload_all_models()
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[ControlFoley] Could not unload other ComfyUI models before low-VRAM load: {exc}")
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -738,7 +739,8 @@ def _patch_bigvgan_from_pretrained() -> None:
         bigvgan_module = importlib.import_module("lib.bigvgan_v2.bigvgan")
         bigvgan_cls = bigvgan_module.BigVGAN
         original = bigvgan_cls._from_pretrained
-    except Exception:
+    except Exception as exc:
+        print(f"[ControlFoley] BigVGAN compatibility patch not installed: {exc}")
         return
 
     if getattr(original, "_controlfoley_compat", False):

@@ -679,6 +679,10 @@ class ControlFoleyRuntime:
 
 
 _MODEL_CACHE: dict[tuple[str, str, str, str, bool, bool], ControlFoleyRuntime] = {}
+# Bumped by the Unload node; the loader's IS_CHANGED returns it so a re-load is
+# forced after any unload (linked inputs are not available inside IS_CHANGED,
+# so a cache-key comparison there would be unreliable).
+_UNLOAD_EPOCH = 0
 _VIDEO_CACHE: OrderedDict[tuple[str, int, int, float, bool], Any] = OrderedDict()
 
 
@@ -1114,18 +1118,11 @@ class LoadControlFoleyModel:
     CATEGORY = CATEGORY
 
     @classmethod
-    def IS_CHANGED(cls, controlfoley_source_dir, model_weights_dir, variant, device, precision, low_vram, compile_encoders, auto_fetch_source=True, dependencies=None):
-        # Force a re-load after the Unload node cleared the cache; otherwise the
-        # executor could hand downstream nodes a stale, already-unloaded runtime.
-        if dependencies is not None:
-            source_dir, weights_dir, low_vram = dependencies.source_dir, dependencies.weights_dir, dependencies.low_vram
-        else:
-            source_dir = _resolve_controlfoley_source_dir(controlfoley_source_dir)
-            weights_dir = _resolve_weights_dir(model_weights_dir)
-        if source_dir is None:
-            return float("nan")
-        key = _runtime_cache_key(source_dir, weights_dir, variant, device, precision, bool(low_vram), bool(compile_encoders))
-        return f"{key}:{key in _MODEL_CACHE}"
+    def IS_CHANGED(cls, *args, **kwargs):
+        # Force a re-load after any unload; otherwise the executor could hand
+        # downstream nodes a stale, already-unloaded runtime. Widget changes are
+        # covered by the executor's normal input comparison.
+        return f"unload_epoch:{_UNLOAD_EPOCH}"
 
     def load(self, controlfoley_source_dir, model_weights_dir, variant, device, precision, low_vram, compile_encoders, auto_fetch_source=True, dependencies=None):
         if dependencies is not None:
@@ -1693,11 +1690,13 @@ class UnloadControlFoleyModel:
     CATEGORY = CATEGORY
 
     def unload(self, controlfoley_model, after=None):
+        global _UNLOAD_EPOCH
         if after is None:
             return ("Connect the after input to unload after generation",)
         keys = [k for k, v in _MODEL_CACHE.items() if v is controlfoley_model]
         for key in keys:
             _MODEL_CACHE.pop(key, None)
+        _UNLOAD_EPOCH += 1
         # Popping the cache alone does not free VRAM: ComfyUI's execution cache
         # still references the runtime object, so drop its tensors explicitly.
         # (The loader's IS_CHANGED forces a re-load before the gutted runtime

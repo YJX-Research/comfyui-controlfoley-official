@@ -302,6 +302,17 @@ def _media_duration(path: Path) -> Optional[float]:
     try:
         import av
         with av.open(str(path)) as container:
+            # Prefer the video stream's decodable span (last frame timestamp).
+            # Container/stream metadata routinely overstates it by up to one frame
+            # duration, and requesting that overstated length upstream makes
+            # frame extraction warn "... video is too short" on every run.
+            for stream in container.streams.video:
+                frames = stream.frames or 0
+                rate = stream.average_rate
+                if frames > 1 and rate:
+                    duration = float((frames - 1) / rate)
+                    if duration > 0:
+                        return duration
             if container.duration is not None:
                 duration = float(container.duration) / 1_000_000.0
                 if duration > 0:
@@ -375,11 +386,11 @@ def _select_generation_video(video, video_input, images, duration: float, image_
         return video
     if video_input is not None:
         path = _save_comfy_video_to_path(video_input)
-        source_duration = _comfy_video_duration(video_input)
+        source_duration = _media_duration(path) or _comfy_video_duration(video_input)
         return {"path": path, "duration": float(source_duration or duration)}
     if images is not None:
         path, source_duration = _save_images_to_video(images, float(image_fps))
-        return {"path": path, "duration": source_duration}
+        return {"path": path, "duration": float(_media_duration(path) or source_duration)}
     return None
 
 

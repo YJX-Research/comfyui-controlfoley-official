@@ -96,7 +96,7 @@
 
 ### F3.3 "video is too short" 告警(含自比较样式)与重复打印
 - **问题**:上游 `load_video`(inference_utils.py:216-226)把"抽到的帧数/fps"与请求时长比较,而节点把未量化的容器时长直接传入(loader:nodes.py:1048-1049;mux:1315-1318)。容器元数据时长几乎从不落在 1/8s(clip)、1/4s(visual)、1/25s(sync)帧网格上,所以只要素材时长不是整帧数,告警必然出现;显示保留两位小数还会出现 `7.96 < 7.96` 这种"自己和自己比"的样式(实际是 7.9583 < 7.96)。实测随包 `v2a_video.mp4` 容器时长 6.064s(非整数帧网格),复现条件成立。重复打印的两个候选根因:(a) generate 路径(`load_all_frames=False`)与 mux 路径(`load_all_frames=True`)各 load 一次,缓存 key 含 `load_all_frames` 必然二次加载;(b) 上游 `log = logging.getLogger()` 是 root logger,宿主 root logger 若挂了多个 handler 会逐条翻倍。两者在运行时用日志标记区分确认。
-- **修法**(节点侧,不动上游):把传给 `load_video` 的请求时长向下量化到 1/`_CLIP_FPS`(0.125s)网格(loader 的 `effective_duration`、generate 的 `requested_duration`、mux 的 `duration` 三处统一);mux 传入的时长改用生成阶段截断后的实际时长(min 逻辑保留)。量化后元数据舍入类告警消失;若素材内容真短于元数据超过一帧,告警保留——那是真实问题,应当让用户看到。重复打印若确认是 root logger 双 handler,则属宿主环境问题,记录残留不修;若是二次 load,量化后 mux 一侧的告警同样消失。
+- **修法**(节点侧,不动上游;**实测后改判,比原定量化方案更本质**):运行时用旧素材(240 帧 @29.97fps,容器时长 8.008s、最后一帧时间戳 7.9746s)精确复现了 `8.00 < 8.01` 成对两次——两次分别来自 generate(`load_all_frames=False`)与 mux(`load_all_frames=True`)各一次 `load_video`,**不是** root logger 双 handler(否则同一条会连续重复而非成对交替)。根因是容器元数据天然比可解码内容多出约一帧。因此改为:`_media_duration` 优先返回视频流可解码跨度 `(frames-1)/average_rate`(帧数/帧率不可得时回退容器时长);native VIDEO 与 IMAGE 输入路径同样改用落盘后文件的 `_media_duration`。帧数学验证:请求时长 ≤ 最后一帧时间戳时,clip/visual/sync 三路抽帧数均满足 `floor(t*fps)+1` ≥ `t*fps`,告警不可能触发;原量化方案对 25fps sync 流反而除不尽、无法根治。单元实测:8.008s 容器 → 7.9746,6.064s 容器 → 6.05605。
 - **验证**:01-04 模板出厂 Run,控制台零 "too short" 告警;人为喂一个内容确实偏短的视频,告警只按真实差距出现。
 - **风险**:低。量化最多截掉 0.125s 内容,远小于现在被上游随手截断的量。
 

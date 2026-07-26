@@ -228,9 +228,21 @@ def _ensure_hf_dependency_cache(low_vram: bool) -> None:
 
     for repo_id in dependency_repos(low_vram):
         try:
+            # A complete local cache must keep working offline; only hit the
+            # network when something is actually missing.
+            snapshot_download(repo_id=repo_id, local_files_only=True)
+            continue
+        except Exception:
+            pass
+        try:
             snapshot_download(repo_id=repo_id)
         except Exception as exc:
-            raise RuntimeError(f"Could not auto-download ControlFoley dependency weights from {repo_id}.") from exc
+            raise RuntimeError(
+                f"Could not auto-download ControlFoley dependency weights from {repo_id}. "
+                "If you are offline, pre-cache this repository once while online. If Hugging Face "
+                "is unreachable from your network, set the HF_ENDPOINT environment variable to a mirror "
+                "(for example https://hf-mirror.com) and retry."
+            ) from exc
 
 
 def _safe_path(value: str, fallback: str, suffix: str | None = None) -> Path:

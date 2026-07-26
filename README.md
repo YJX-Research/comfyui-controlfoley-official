@@ -83,6 +83,16 @@ python main.py
 
 This repository does not include ControlFoley model weights. During `ControlFoley Model Loader` or `ControlFoley Dependencies Loader`, missing weights are downloaded from Hugging Face into the configured `model_weights_dir`.
 
+The five ControlFoley weight files total roughly **16 GB** (about 11 GB core weights plus 5 GB external encoder weights), and the third-party dependency models cached by Hugging Face add several more GB. The first model load therefore takes a while even on a fast connection.
+
+> **If huggingface.co is unreachable or very slow from your network**, set the `HF_ENDPOINT` environment variable to a mirror **before starting ComfyUI**, otherwise the first download can appear to hang with no error:
+>
+> ```bash
+> export HF_ENDPOINT=https://hf-mirror.com
+> ```
+>
+> On Windows PowerShell: `$env:HF_ENDPOINT = "https://hf-mirror.com"`.
+
 If `model_weights_dir` is empty or left as `path/to/model_weights`, the node uses `CONTROLFOLEY_WEIGHTS_DIR` when set, then an existing packaged `controlfoley_workspace/model_weights`, then `ComfyUI/models/controlfoley`. The node registers `ComfyUI/models/controlfoley` with ComfyUI's model folder system under the `controlfoley` key.
 
 You can still pre-download the public model release manually:

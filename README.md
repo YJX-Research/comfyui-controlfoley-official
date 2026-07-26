@@ -152,14 +152,14 @@ Do not commit ControlFoley weights, Hugging Face caches, ComfyUI outputs, or loc
 ## 🧩 Available Nodes
 
 - **ControlFoley Simple Generate**: one-node path for loading the model and generating audio in the same node.
-- **ControlFoley Dependencies Loader**: validates the public ControlFoley source tree, downloads missing ControlFoley weights, and prefetches known Hugging Face dependencies.
+- **ControlFoley Dependencies Loader**: validates the public ControlFoley source tree (auto-fetching it when `auto_fetch_source` is enabled), downloads missing ControlFoley weights, and prefetches known Hugging Face dependencies.
 - **ControlFoley Model Loader**: loads ControlFoley and related encoders from local source and weight directories, optionally using the dependency-loader output.
 - **ControlFoley Torch Compile**: optional advanced node for compiling feature encoders and, if requested, the generator module.
-- **ControlFoley Video Loader**: resolves a video path from ComfyUI `input` or an absolute path.
+- **ControlFoley Video Loader**: resolves a video path from ComfyUI `input` or an absolute path, shows an inline preview of the loaded video, and exposes a native ComfyUI `VIDEO` output for chaining into core video nodes.
 - **ControlFoley Generate**: runs V2A, TV2A, TC-V2A, AC-V2A, or T2A/TTA depending on connected inputs and parameters. It accepts the `ControlFoley Video Loader` output, native ComfyUI `VIDEO`, or native ComfyUI `IMAGE` batches.
 - **ControlFoley Advanced Generate**: same generation path with `enabled`, `silent_audio_on_error`, and a status output for complex workflows.
-- **ControlFoley Save Audio**: writes generated audio to `ComfyUI/output` as WAV or FLAC.
-- **ControlFoley Video-Audio Muxer**: writes an MP4 with generated audio replacing the original audio track.
+- **ControlFoley Save Audio**: writes generated audio to `ComfyUI/output` as WAV or FLAC and shows an inline audio player.
+- **ControlFoley Video-Audio Muxer**: writes an MP4 with generated audio replacing the original audio track and shows an inline video preview.
 - **ControlFoley Model Unloader**: releases cached model objects and clears CUDA cache.
 
 ## 🧪 Demo Workflows

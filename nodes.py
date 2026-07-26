@@ -660,6 +660,28 @@ def _cache_video(video_path: Path, video_info: Any, requested_duration: float, l
         _VIDEO_CACHE.popitem(last=False)
 
 
+def _throw_if_interrupted() -> None:
+    try:
+        import comfy.model_management as model_management
+    except Exception:
+        return
+    model_management.throw_exception_if_processing_interrupted()
+
+
+def _interruptible_flow_matching_cls(base_cls):
+    class _InterruptibleFlowMatching(base_cls):
+        # The upstream euler loop has no interrupt checks, so ComfyUI's Cancel
+        # only took effect after the whole sampling loop finished. Checking at
+        # every step lets a cancel abort within one step.
+        def run_t0_to_t1(self, fn, x0, t0, t1):
+            def _checked_fn(t, x):
+                _throw_if_interrupted()
+                return fn(t, x)
+            return super().run_t0_to_t1(_checked_fn, x0, t0, t1)
+
+    return _InterruptibleFlowMatching
+
+
 def _import_public_controlfoley(source_dir: Path):
     _ensure_public_controlfoley_repo(source_dir)
     source_text = str(source_dir)
@@ -782,7 +804,7 @@ def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str
         seq_cfg=model_cfg.seq_cfg,
         net=net,
         feature_utils=feature_utils,
-        flow_matching_cls=flow_matching.FlowMatching,
+        flow_matching_cls=_interruptible_flow_matching_cls(flow_matching.FlowMatching),
         inference_utils=inference_utils,
         torchaudio=torchaudio,
         compile_encoders=compile_encoders,

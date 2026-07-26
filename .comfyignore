@@ -1,4 +1,39 @@
-# Keep workflows and documentation in the Registry package, but avoid
-# shipping large demo media files through ComfyUI Manager installs.
-examples/generated/**/*.mp4
-examples/generated/**/*.wav
+# Keep runtime caches, local scratch files, and model weights out of the
+# Registry package. Bundled release-reviewed demo media under
+# examples/generated is intentionally shipped so workflow templates can run
+# immediately after ComfyUI Manager / Registry installation.
+__pycache__/
+.ruff_cache/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ipynb_checkpoints/
+
+.venv/
+venv/
+env/
+conda/
+*.egg-info/
+
+output/
+input/
+temp/
+logs/
+*.log
+comfyui.pid
+
+models/
+checkpoints/
+weights/
+model_weights/
+hf_assets/
+*.ckpt
+*.safetensors
+*.pt
+*.pth
+*.bin
+
+.DS_Store
+Thumbs.db
+local_*

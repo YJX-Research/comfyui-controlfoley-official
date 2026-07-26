@@ -53,3 +53,7 @@ Thumbs.db
 
 # Local scratch exports
 local_*
+
+# Review artifacts (local only)
+.review/
+.pr_body.md

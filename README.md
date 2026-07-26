@@ -13,7 +13,7 @@ Official ComfyUI custom nodes and full-task workflows for [ControlFoley](https:/
 
 - Generate sound effects / Foley audio that follows the visual content of a video, with optional control from text prompts or reference audio.
 - Run video-to-audio (V2A), text-to-audio (T2A), text-guided video-to-audio (TV2A/TC-V2A), and reference-audio-guided video-to-audio (AC-V2A) workflows directly in ComfyUI.
-- Load the public ControlFoley source tree and download missing Hugging Face weights on demand.
+- Auto-fetch the public ControlFoley source tree (pinned revision) and download missing Hugging Face weights on demand.
 - Save generated audio as WAV/FLAC and mux generated audio back into video.
 - Use bundled workflow templates and release-reviewed demo media for quick inspection.
 
@@ -37,7 +37,7 @@ This repository is a ComfyUI integration layer. It does not modify the ControlFo
 
 Install `ControlFoley Official` from [Comfy Registry](https://registry.comfy.org/publishers/yjx-research/nodes/ComfyUI-ControlFoley) / ComfyUI Manager. This installs the custom node package and bundled workflow templates.
 
-After installing the node, clone the public ControlFoley repository separately. The node auto-detects a folder named `controlfoley` next to this custom node, under the ComfyUI root, or from `CONTROLFOLEY_SOURCE_DIR`; otherwise set `controlfoley_source_dir` manually in the workflow.
+After installing the node, the public ControlFoley source tree is fetched automatically on first use: when `auto_fetch_source` is enabled (the default) and no local copy is found, the node shallow-clones a pinned revision of the upstream repository into `<ComfyUI root>/controlfoley` using `git`. If GitHub is unreachable from your network, set the `CONTROLFOLEY_SOURCE_URL` environment variable to a reachable mirror of the repository, or clone it manually as described below. The node auto-detects a folder named `controlfoley` next to this custom node, under the ComfyUI root, or from `CONTROLFOLEY_SOURCE_DIR`; otherwise set `controlfoley_source_dir` manually in the workflow.
 
 For source installation, clone this custom node into `ComfyUI/custom_nodes`:
 
@@ -52,7 +52,7 @@ This repository is published at `YJX-Research/comfyui-controlfoley-official`; th
 
 `requirements.txt` does not install `torch`, `torchaudio`, or `torchvision`; use the versions from your ComfyUI/PyTorch CUDA environment.
 
-Clone the public ControlFoley repository separately:
+Manual source setup (optional, for offline or custom layouts — otherwise `auto_fetch_source` handles this):
 
 ```bash
 git clone https://github.com/xiaomi-research/controlfoley controlfoley
@@ -70,7 +70,7 @@ python main.py
 1. Install ComfyUI.
 2. Clone this custom node into `ComfyUI/custom_nodes`.
 3. Install requirements with `pip install -r requirements.txt`; keep the existing ComfyUI PyTorch stack.
-4. Clone the public ControlFoley repository as `controlfoley` next to this custom node or under the ComfyUI root, or set `CONTROLFOLEY_SOURCE_DIR`.
+4. The public ControlFoley source is fetched automatically on first run (`auto_fetch_source`, enabled by default). To manage it yourself, clone it as `controlfoley` next to this custom node or under the ComfyUI root, or set `CONTROLFOLEY_SOURCE_DIR`.
 5. Start ComfyUI.
 6. Open the bundled templates from ComfyUI Browse Templates or load a workflow from `examples/workflows`.
 7. Leave `model_weights_dir` as `path/to/model_weights` to use the default download directory, or set a custom local path.

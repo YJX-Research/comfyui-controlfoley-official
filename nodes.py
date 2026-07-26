@@ -637,8 +637,10 @@ def _get_cached_video(video_path: Path, duration: float, load_all_frames: bool):
     return video_info
 
 
-def _cache_video(video_path: Path, video_info: Any, load_all_frames: bool) -> None:
-    key = _video_cache_key(video_path, float(video_info.total_duration), load_all_frames)
+def _cache_video(video_path: Path, video_info: Any, requested_duration: float, load_all_frames: bool) -> None:
+    # Key on the *requested* duration so lookups (which only know the request)
+    # hit even when upstream truncated total_duration to the frame grid.
+    key = _video_cache_key(video_path, float(requested_duration), load_all_frames)
     _VIDEO_CACHE[key] = video_info
     _VIDEO_CACHE.move_to_end(key)
     while len(_VIDEO_CACHE) > VIDEO_CACHE_MAX_ITEMS:
@@ -1332,7 +1334,7 @@ class ControlFoleyGenerate:
                 if video_info is None:
                     video_info = runtime.inference_utils.load_video(video_path, requested_duration, load_all_frames=False)
                     if cache_video_features:
-                        _cache_video(video_path, video_info, False)
+                        _cache_video(video_path, video_info, requested_duration, False)
                 if video_info.total_duration < duration:
                     duration = video_info.total_duration
                 clip_frames = None if mask_away_clip else video_info.clip_embeddings.unsqueeze(0)
@@ -1495,7 +1497,7 @@ class MuxControlFoleyAudioToVideo:
         video_info = _get_cached_video(video_path, duration, True)
         if video_info is None:
             video_info = runtime.inference_utils.load_video(video_path, duration, load_all_frames=True)
-            _cache_video(video_path, video_info, True)
+            _cache_video(video_path, video_info, duration, True)
         relative = _safe_path(output_filename, "controlfoley/output.mp4", ".mp4")
         audio_stem = audio.get("stem") if isinstance(audio, dict) else None
         if audio_stem:

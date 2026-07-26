@@ -873,12 +873,14 @@ def _preview_video_path(path: Path) -> Path:
     return preview_path
 
 
-def _video_ui(path: Path) -> dict[str, list[dict[str, str]]]:
+def _video_ui(path: Path) -> dict[str, Any]:
+    # Mirrors the dict emitted by ComfyUI's own video save/preview nodes
+    # (ui.PreviewVideo): the stock frontend only renders video results from the
+    # "images" + "animated" keys; the VHS-style "gifs" key is ignored.
     preview_path = _preview_video_path(path)
     file_type = "input" if _relative_to(preview_path, _input_dir()) is not None else "output"
     entry = _ui_file_entry(preview_path, file_type)
-    entry["format"] = "video/mp4"
-    return {"gifs": [entry]}
+    return {"images": [entry], "animated": (True,)}
 
 
 def _audio_ui(path: Path) -> dict[str, list[dict[str, str]]]:

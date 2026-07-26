@@ -278,14 +278,14 @@ Implemented options:
 - Optional video feature caching.
 - Optional CLIP masking through `mask_away_clip`.
 - `clip_batch_size_multiplier` and `sync_batch_size_multiplier` tune feature-extractor frame batches for VRAM/performance tradeoffs.
-- `staged_offload` moves encoders to CPU during DiT sampling and restores them for decode/vocode.
+- `staged_offload` moves encoders to CPU during DiT sampling and restores them for decode/vocode **when the selected ControlFoley source implements it**. The pinned public upstream source does not accept this parameter; the option is then ignored and a console note is printed.
 - Optional `compile_encoders` for users who want to pay one-time `torch.compile` cost.
 - `low_vram` path for text-only T2A/TTA runs.
 - `ControlFoley Model Unloader` node.
 - CUDA cache cleanup after low-VRAM generation.
 - Medium/low-VRAM bundled workflow defaults: `bf16`, `low_vram=false`, `staged_offload=true`, `clip_batch_size_multiplier=8`, `sync_batch_size_multiplier=8`, and 25-step generation.
 
-For V2A, TV2A, TC-V2A, and AC-V2A memory reduction, keep `low_vram=false` and use `staged_offload=true`. `low_vram=true` remains a text-only T2A/TTA path.
+For V2A, TV2A, TC-V2A, and AC-V2A memory reduction, keep `low_vram=false`; `staged_offload=true` helps when the source supports it (it is ignored with a console note on the public upstream source). `low_vram=true` remains a text-only T2A/TTA path.
 
 ## 📊 VRAM and Speed Benchmark
 
@@ -300,7 +300,7 @@ Cold-start behavior:
 Memory guidance:
 
 - Use a CUDA GPU; CPU/MPS execution is not supported by this node's integrated public inference path.
-- Use `staged_offload=true` to reduce memory pressure in V2A, TV2A, TC-V2A, and AC-V2A workflows.
+- Use `staged_offload=true` to reduce memory pressure in V2A, TV2A, TC-V2A, and AC-V2A workflows on sources that implement it (ignored with a console note on the public upstream source).
 - Lower `clip_batch_size_multiplier` and `sync_batch_size_multiplier` only when feature extraction peaks too high; this trades speed for memory during encoder feature extraction.
 - `low_vram=true` is intended for text-only T2A/TTA; keep it `false` for V2A, TV2A, TC-V2A, and AC-V2A.
 - Keep `num_inference_steps=25` for normal output quality. Lower step counts mainly reduce runtime, not peak VRAM, and are only useful for quick internal smoke checks.

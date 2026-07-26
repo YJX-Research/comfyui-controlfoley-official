@@ -214,5 +214,37 @@ README 改动同样一条一 commit、同样过 Codex review。
 
 ### F3.3(c662cbd + F3.3b 加固)
 - Codex 两条:(1) VFR 下 `(frames-1)/average_rate` 非精确——**部分接受**:加 `min(候选值, 容器时长)` 钳制防过冲;完整解码求末帧 PTS 的方案**拒绝**(loader 路径上解码整只视频代价过高,VFR 残余误差的后果只是原有告警偶发出现,非新回归);(2) 音频将比视频短约一帧——**接受为有意取舍**:修复前上游同样会把生成截断到帧网格,实际输出时长差 8-40ms,换取结构性告警根治;不为此增加"抽帧时长/输出时长"双管道。
+### F2.1(8456f9b + F2.1b e87e892)
 - 实测记录:本地 file:// 镜像五用例全 PASS(clone 成功/幂等/坏 URL 干净失败无残留/目标存在但不完整时拒绝且不动用户目录/开关关不 clone);本机 GitHub 直连可达,上游 HEAD 即 pin 的 `6858cd1`。
 - Codex 指出:并发保护仅进程内 Lock,两个共享同一 ComfyUI 根目录的进程同时 fetch 时,后完成者 rename 失败会误报失败。**部分接受**——在失败路径复查目标目录是否已被他人落地完整,是则直接采用(F2.1b 修入);**拒绝**跨进程锁文件方案:双进程共根目录本身是罕见部署,复查已覆盖其后果,锁文件反而引入陈旧锁清理问题。
+- 端到端实测(源码不在场 + 真实 GitHub):重启后首次运行自动浅克隆 `6858cd1` 到 `<ComfyUI>/controlfoley`,随后完整走完 T2A 生成并保存 wav,全链 67.28s;clone 后 `git rev-parse HEAD` 与 pin 完全一致。
+
+### F3.7(6fe6091)
+- Codex 未发现实际缺陷;确认存取 key 统一后不会跨 load_all_frames 维度误命中。实测:同参数二次运行 1.31s(首轮 77.46s),mux 特征缓存命中。
+
+### F3.1(1a419e4 + F3.1b 428fca9)
+- Codex 指出 `local_files_only=True` 命中不等于缓存完整,本地优先会让在线用户的残缺缓存失去自动补全。**接受**,但用更简单的等价方案落地:改为网络优先(保留原有补全语义)、网络异常回退本地缓存、双失败才抛带 `HF_ENDPOINT` 镜像指引的错误。`HF_HUB_OFFLINE=1` + 完整缓存实测通过。F3.1b 复审无缺陷。
+
+### F3.2(ece91a0)
+- Codex 未发现实际缺陷,并确认:adaptive 模式同样经过包装;`InterruptProcessingException` 继承 `BaseException`,不会被 Advanced 节点的 `except Exception`(silent_audio_on_error)吞掉;torch.compile 只编译 net,不涉及此闭包。
+
+### F3.4(66a22a1)
+- 单测:位置/关键字两种传法均对齐 dtype、上游新增第 7 参可转发、None 安全、定位失败打 WARNING。Codex 未发现实际缺陷。
+
+### F3.5(8c2818d)
+- Codex 未发现实际缺陷;进程内一次性提示,tooltip 不影响 widgets_values 对位。
+
+### F3.6(49e1ac8 + F3.6b 9e97272)
+- 运行时实证:`/workflow_templates` 恰好 7 条、仅注册 `example_workflows/`,旧目录属纯冗余(非重复注册)。Codex 确认仓库内无代码引用断链,文档引用由任务四处理;`.gitignore` 过期例外行在 F3.6b 同步修正。
+
+### F3.8(755900e)/F3.9(068445b)
+- Codex 均未发现实际缺陷。F3.9 实测:60h 旧文件启动即清、新文件保留(经 folder_paths shim 在真实 output 目录验证)。
+
+### F4.R1(b31ec82 + R1b 9546293)
+- Codex 指出 Demo Workflows 段仍写"运行前必须手动备好源码树",与新行为不一致——**接受**,R1b 修正。其余描述与实现核对一致。
+
+### F4.R2(7078728)/F4.R3(ea03c12)/F4.R4(4638b8c)/F4.R9(9b28507)
+- 直接落地。R4 后用 grep 复核仓库内不再有 `examples/workflows` 活引用;R3 权重体量按实测 16 GB(核心 11 GB + 外部 5 GB)写入;R11 四个外链实测均 200。
+
+### F4.R5(7a3885e + R5b 65792e0)
+- Codex 指出 Known Issues 段还有一句未加限定——**接受**,R5b 修正。其余段落与 `supports_staged_offload` 探测逻辑核对一致。

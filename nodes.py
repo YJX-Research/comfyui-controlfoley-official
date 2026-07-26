@@ -710,6 +710,21 @@ def _cache_video(video_path: Path, video_info: Any, requested_duration: float, l
         _VIDEO_CACHE.popitem(last=False)
 
 
+def _torch_compile_available() -> bool:
+    # torch.compile on CUDA needs a working Triton; without it the failure is
+    # deferred until the first compiled call, which poisons the shared cached
+    # model for every later workflow. Check up front instead.
+    try:
+        from torch.utils._triton import has_triton
+        return bool(has_triton())
+    except Exception:
+        try:
+            import triton  # noqa: F401
+            return True
+        except Exception:
+            return False
+
+
 _STAGED_OFFLOAD_WARNED = False
 
 
@@ -851,7 +866,10 @@ def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str
         else:
             feature_utils.to(device, dtype)
         if compile_encoders:
-            feature_utils.compile()
+            if _torch_compile_available():
+                feature_utils.compile()
+            else:
+                print("[ControlFoley] compile_encoders skipped: no working Triton on this platform")
     finally:
         if low_vram and original_musicgen is not None:
             feature_extractor.MusicGen = original_musicgen
@@ -1123,6 +1141,12 @@ class ControlFoleyTorchCompile:
     def compile(self, controlfoley_model, compile_encoders, compile_generator):
         runtime: ControlFoleyRuntime = controlfoley_model
         messages = []
+        if (compile_encoders or compile_generator) and not _torch_compile_available():
+            # Compiling without Triton would defer a TritonMissing crash into the
+            # first generation and poison the shared cached model for later runs.
+            message = "torch.compile skipped: no working Triton on this platform"
+            print(f"[ControlFoley] {message}")
+            return (runtime, message)
         if compile_encoders and hasattr(runtime.feature_utils, "compile"):
             runtime.feature_utils.compile()
             messages.append("feature encoders compiled")

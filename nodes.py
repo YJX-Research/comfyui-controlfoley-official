@@ -1681,8 +1681,58 @@ class MuxControlFoleyAudioToVideo:
             )
             out_path = Path(full_output_folder) / f"{filename}_{counter:05}_.mp4"
         runtime.inference_utils.make_video(video_info, out_path, waveform.cpu(), int(audio["sample_rate"]))
+        _fix_mux_container_timing(out_path)
         result = ({"path": out_path}, str(out_path))
         return {"ui": _video_ui(out_path), "result": result}
+
+
+def _fix_mux_container_timing(path: Path) -> None:
+    """Rewrite the muxed file (stream copy) with per-packet durations.
+
+    The upstream muxer pins every frame's pts but never sets packet durations,
+    so ffmpeg guesses ~1/24 s for the final video frame. That inflates the
+    container duration past the real content span, and players then show a
+    longer total for the MP4 than for the WAV saved from the same waveform.
+    """
+    import av
+
+    tmp = path.with_name(path.stem + ".timing" + path.suffix)
+    try:
+        with av.open(str(path)) as src:
+            with av.open(str(tmp), "w") as dst:
+                mapping = {}
+                for stream in src.streams:
+                    if hasattr(dst, "add_stream_from_template"):
+                        mapping[stream.index] = dst.add_stream_from_template(stream)
+                    else:
+                        mapping[stream.index] = dst.add_stream(template=stream)
+                packets = [pk for pk in src.demux() if pk.pts is not None and pk.dts is not None]
+                durations: dict[int, dict[int, int]] = {}
+                for pk in packets:
+                    durations.setdefault(pk.stream.index, {})[pk.pts] = pk.duration or 0
+                for idx, by_pts in durations.items():
+                    pts_sorted = sorted(by_pts)
+                    deltas = [b - a for a, b in zip(pts_sorted, pts_sorted[1:])]
+                    if not deltas:
+                        continue
+                    typical = min(deltas)
+                    for a, b in zip(pts_sorted, pts_sorted[1:]):
+                        by_pts[a] = b - a
+                    by_pts[pts_sorted[-1]] = typical
+                for pk in packets:
+                    fixed = durations.get(pk.stream.index, {}).get(pk.pts)
+                    if fixed:
+                        pk.duration = fixed
+                    pk.stream = mapping[pk.stream.index]
+                    dst.mux(pk)
+        os.replace(str(tmp), str(path))
+    except Exception as exc:
+        print(f"[ControlFoley] Could not normalize muxed container timing: {exc}")
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
 
 
 class UnloadControlFoleyModel:

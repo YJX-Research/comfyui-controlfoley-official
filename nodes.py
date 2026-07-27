@@ -3,7 +3,10 @@ import inspect
 import importlib
 import os
 import shutil
+import stat
+import subprocess
 import sys
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -38,6 +41,11 @@ FIXED_STEP_SENTINEL = "fixed"
 DEFAULT_INFERENCE_STEPS = 25
 VIDEO_CACHE_MAX_ITEMS = 2
 DEFAULT_CONTROLFOLEY_SOURCE_DIR = "controlfoley"
+CONTROLFOLEY_SOURCE_DEFAULT_URL = "https://github.com/xiaomi-research/controlfoley"
+# The public inference API is not versioned; an unpinned clone would silently pick up
+# upstream API changes and break this integration, so always fetch a known-good revision.
+CONTROLFOLEY_SOURCE_PIN = "6858cd12a48d141201e3266e7abe1f38357a133e"
+CONTROLFOLEY_FETCH_TIMEOUT_SEC = 300
 DEFAULT_MODEL_WEIGHTS_DIR = "path/to/model_weights"
 DEFAULT_DEMO_VIDEO_PATH = "examples/generated/01_v2a_basic/v2a_video.mp4"
 DEFAULT_TEXT_PROMPT = "A bird sings melodically in a forest"
@@ -82,6 +90,35 @@ def _temp_dir() -> Path:
 
 def _temp_video_path(prefix: str) -> Path:
     return _temp_dir() / f"{prefix}_{time.time_ns()}.mp4"
+
+
+_TEMP_MAX_AGE_SEC = 48 * 3600
+
+
+def _cleanup_stale_temp_files() -> None:
+    # Intermediate MP4s written for VIDEO/IMAGE inputs must outlive the run that
+    # created them (the muxer re-reads the same path), so they are reaped by age
+    # at startup instead of being deleted right after generation.
+    temp_dir = _output_dir() / "controlfoley" / "temp"
+    if not temp_dir.is_dir():
+        return
+    cutoff = time.time() - _TEMP_MAX_AGE_SEC
+    removed = 0
+    for item in temp_dir.iterdir():
+        try:
+            if item.is_file() and item.stat().st_mtime < cutoff:
+                item.unlink()
+                removed += 1
+        except Exception as exc:
+            print(f"[ControlFoley] Could not remove stale temp file {item.name}: {exc}")
+    if removed:
+        print(f"[ControlFoley] Removed {removed} stale temp file(s) from {temp_dir}")
+
+
+try:
+    _cleanup_stale_temp_files()
+except Exception as _cleanup_exc:
+    print(f"[ControlFoley] Temp cleanup skipped: {_cleanup_exc}")
 
 
 def _node_dir() -> Path:
@@ -158,6 +195,15 @@ def _resolve_controlfoley_source_dir(path_text: str) -> Optional[Path]:
     return None
 
 
+def _resolve_source_dir_with_auto_fetch(path_text: str, auto_fetch_source: bool) -> Optional[Path]:
+    source_dir = _resolve_controlfoley_source_dir(path_text)
+    if auto_fetch_source and (source_dir is None or not _looks_like_controlfoley_source(source_dir)):
+        fetched = _auto_fetch_controlfoley_source()
+        if fetched is not None:
+            source_dir = fetched
+    return source_dir
+
+
 def _resolve_weights_dir(path_text: str) -> Path:
     text = (path_text or "").strip().strip('"')
     if not text or text == "path/to/model_weights":
@@ -211,9 +257,26 @@ def _ensure_hf_dependency_cache(low_vram: bool) -> None:
 
     for repo_id in dependency_repos(low_vram):
         try:
+            # Probe the local cache first. A network-first call cannot be trusted
+            # to fail fast: on links that stall mid-transfer rather than refuse,
+            # huggingface_hub keeps retrying and never reaches the offline
+            # fallback, even with a complete cache on disk. This probe touches no
+            # network, and an incomplete cache still falls through to a download.
+            snapshot_download(repo_id=repo_id, local_files_only=True)
+            continue
+        except Exception:
+            pass
+        try:
             snapshot_download(repo_id=repo_id)
         except Exception as exc:
-            raise RuntimeError(f"Could not auto-download ControlFoley dependency weights from {repo_id}.") from exc
+            raise RuntimeError(
+                f"Could not download ControlFoley dependency weights from {repo_id} "
+                "and no complete local cache was found. "
+                "If you are offline, pre-cache this repository once while online. If Hugging Face "
+                "is unreachable or slow from your network, set the HF_ENDPOINT environment variable "
+                "to a mirror (for example https://hf-mirror.com) and retry; with a complete local "
+                "cache you can also set HF_HUB_OFFLINE=1 to skip network access entirely."
+            ) from exc
 
 
 def _safe_path(value: str, fallback: str, suffix: str | None = None) -> Path:
@@ -285,6 +348,21 @@ def _media_duration(path: Path) -> Optional[float]:
     try:
         import av
         with av.open(str(path)) as container:
+            # Prefer the video stream's decodable span (last frame timestamp).
+            # Container/stream metadata routinely overstates it by up to one frame
+            # duration, and requesting that overstated length upstream makes
+            # frame extraction warn "... video is too short" on every run.
+            for stream in container.streams.video:
+                frames = stream.frames or 0
+                rate = stream.average_rate
+                if frames > 1 and rate:
+                    duration = float((frames - 1) / rate)
+                    # average_rate is approximate for variable-frame-rate files;
+                    # never report more than the container itself claims.
+                    if container.duration is not None:
+                        duration = min(duration, float(container.duration) / 1_000_000.0)
+                    if duration > 0:
+                        return duration
             if container.duration is not None:
                 duration = float(container.duration) / 1_000_000.0
                 if duration > 0:
@@ -294,7 +372,8 @@ def _media_duration(path: Path) -> Optional[float]:
                     duration = float(stream.duration * stream.time_base)
                     if duration > 0:
                         return duration
-    except Exception:
+    except Exception as exc:
+        print(f"[ControlFoley] Could not probe media duration of {path.name}: {exc}")
         return None
     return None
 
@@ -358,11 +437,11 @@ def _select_generation_video(video, video_input, images, duration: float, image_
         return video
     if video_input is not None:
         path = _save_comfy_video_to_path(video_input)
-        source_duration = _comfy_video_duration(video_input)
+        source_duration = _media_duration(path) or _comfy_video_duration(video_input)
         return {"path": path, "duration": float(source_duration or duration)}
     if images is not None:
         path, source_duration = _save_images_to_video(images, float(image_fps))
-        return {"path": path, "duration": source_duration}
+        return {"path": path, "duration": float(_media_duration(path) or source_duration)}
     return None
 
 
@@ -393,8 +472,8 @@ def _device_from_choice(device: str) -> str:
             torch_device = model_management.get_torch_device()
             if torch_device is not None:
                 return str(torch_device).split(":", 1)[0]
-        except Exception:
-            pass
+        except Exception as exc:
+            print(f"[ControlFoley] Could not query ComfyUI torch device, probing manually: {exc}")
         if torch.cuda.is_available():
             return "cuda"
         if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
@@ -408,11 +487,101 @@ def _free_vram_for_low_vram_load() -> None:
         import comfy.model_management as model_management
 
         model_management.unload_all_models()
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"[ControlFoley] Could not unload other ComfyUI models before low-VRAM load: {exc}")
     gc.collect()
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
+
+
+_SOURCE_FETCH_LOCK = threading.Lock()
+
+
+def _rmtree_force(path: Path) -> None:
+    def _onerror(func, item, exc_info):
+        try:
+            os.chmod(item, stat.S_IWRITE)
+            func(item)
+        except Exception:
+            pass
+
+    shutil.rmtree(str(path), onerror=_onerror)
+
+
+def _controlfoley_source_url() -> str:
+    return os.environ.get("CONTROLFOLEY_SOURCE_URL", "").strip() or CONTROLFOLEY_SOURCE_DEFAULT_URL
+
+
+def _auto_fetch_controlfoley_source() -> Optional[Path]:
+    """Clone the pinned public ControlFoley source into <ComfyUI root>/controlfoley.
+
+    The clone lands in a temporary sibling directory first and is renamed into place
+    only after it passes the completeness check, so a failed or interrupted fetch
+    never leaves a half-populated folder for the auto-detection to misjudge as ready.
+    Returns the final source directory on success, None on any failure (callers fall
+    back to the manual-clone error message).
+    """
+    target = _comfy_root_dir() / DEFAULT_CONTROLFOLEY_SOURCE_DIR
+    with _SOURCE_FETCH_LOCK:
+        if _looks_like_controlfoley_source(target):
+            return target
+        url = _controlfoley_source_url()
+        tmp = target.parent / f"{DEFAULT_CONTROLFOLEY_SOURCE_DIR}.fetch-{os.getpid()}-{time.time_ns()}"
+        print(
+            f"[ControlFoley] Auto-fetching ControlFoley source revision {CONTROLFOLEY_SOURCE_PIN[:7]} "
+            f"from {url} into {target}"
+        )
+        try:
+            if target.exists():
+                raise RuntimeError(
+                    f"{target} already exists but is not a complete ControlFoley source tree; "
+                    "remove it or point controlfoley_source_dir at a valid clone."
+                )
+            tmp.mkdir(parents=True, exist_ok=False)
+
+            def _run_git(*args: str) -> None:
+                completed = subprocess.run(
+                    ["git", *args],
+                    cwd=str(tmp),
+                    shell=False,
+                    capture_output=True,
+                    text=True,
+                    timeout=CONTROLFOLEY_FETCH_TIMEOUT_SEC,
+                )
+                if completed.returncode != 0:
+                    detail = (completed.stderr or completed.stdout or "").strip()[:500]
+                    raise RuntimeError(f"git {args[0]} failed: {detail}")
+
+            _run_git("init", "--quiet")
+            _run_git("remote", "add", "origin", url)
+            _run_git("fetch", "--quiet", "--depth", "1", "origin", CONTROLFOLEY_SOURCE_PIN)
+            _run_git("checkout", "--quiet", "FETCH_HEAD")
+            if not _looks_like_controlfoley_source(tmp):
+                raise RuntimeError(
+                    "fetched tree does not look like the public ControlFoley source "
+                    "(missing demo.py / controlfoley/inference_utils.py)"
+                )
+            tmp.rename(target)
+            print(f"[ControlFoley] ControlFoley source fetch complete: {target}")
+            return target
+        except subprocess.TimeoutExpired:
+            print(
+                "[ControlFoley] ControlFoley source auto-fetch timed out after "
+                f"{CONTROLFOLEY_FETCH_TIMEOUT_SEC}s. If GitHub is unreachable from your network, "
+                "set the CONTROLFOLEY_SOURCE_URL environment variable to a reachable mirror."
+            )
+            return None
+        except Exception as exc:
+            if _looks_like_controlfoley_source(target):
+                # Another process (sharing this ComfyUI root) landed the source while we
+                # were fetching; use it instead of reporting a failure.
+                print(f"[ControlFoley] ControlFoley source already fetched elsewhere: {target}")
+                return target
+            print(f"[ControlFoley] ControlFoley source auto-fetch failed: {exc}")
+            return None
+        finally:
+            if tmp.exists():
+                _rmtree_force(tmp)
 
 
 def _ensure_public_controlfoley_repo(source_dir: Path) -> None:
@@ -428,7 +597,10 @@ def _ensure_public_controlfoley_repo(source_dir: Path) -> None:
         hint = (
             "Clone https://github.com/xiaomi-research/controlfoley and set "
             "controlfoley_source_dir to that folder. The node also auto-detects "
-            "a sibling or ComfyUI-root folder named 'controlfoley'."
+            "a sibling or ComfyUI-root folder named 'controlfoley'. "
+            "With auto_fetch_source enabled the node clones this automatically; "
+            "if GitHub is unreachable from your network, set the CONTROLFOLEY_SOURCE_URL "
+            "environment variable to a reachable mirror of the repository and retry."
         )
         raise FileNotFoundError(
             "ControlFoley public source directory is incomplete. "
@@ -442,16 +614,36 @@ def _patch_timbre_dtype_alignment(net: Any) -> None:
     original = getattr(net, "preprocess_conditions", None)
     projection = getattr(net, "timbre_input_proj", None)
     if original is None or projection is None:
+        # Upstream renamed or removed the attributes this patch relies on; a
+        # silent no-op here would let the bf16/fp16 timbre crash quietly return.
+        print(
+            "[ControlFoley] WARNING: timbre dtype patch could not be installed "
+            "(preprocess_conditions/timbre_input_proj not found on the upstream model). "
+            "Reference-audio runs in bf16/fp16 may fail with a dtype mismatch."
+        )
         return
 
-    def _patched_preprocess_conditions(clip_f, visual_f, sync_f, text_f, audio_f, timbre_f):
+    # Upstream signature: preprocess_conditions(clip_f, visual_f, sync_f, text_f,
+    # audio_f, timbre_f). Forward everything verbatim so added upstream parameters
+    # keep working; only the timbre tensor is realigned.
+    def _patched_preprocess_conditions(*args, **kwargs):
         try:
             param = next(projection.parameters())
-            if timbre_f is not None and (timbre_f.dtype != param.dtype or timbre_f.device != param.device):
-                timbre_f = timbre_f.to(device=param.device, dtype=param.dtype)
         except StopIteration:
-            pass
-        return original(clip_f, visual_f, sync_f, text_f, audio_f, timbre_f)
+            param = None
+        if param is not None:
+            def _align(value):
+                if torch.is_tensor(value) and (value.dtype != param.dtype or value.device != param.device):
+                    return value.to(device=param.device, dtype=param.dtype)
+                return value
+
+            if "timbre_f" in kwargs:
+                kwargs["timbre_f"] = _align(kwargs["timbre_f"])
+            elif len(args) >= 6:
+                args = list(args)
+                args[5] = _align(args[5])
+                args = tuple(args)
+        return original(*args, **kwargs)
 
     net.preprocess_conditions = _patched_preprocess_conditions
     net._controlfoley_timbre_dtype_patch = True
@@ -491,6 +683,10 @@ class ControlFoleyRuntime:
 
 
 _MODEL_CACHE: dict[tuple[str, str, str, str, bool, bool], ControlFoleyRuntime] = {}
+# Bumped by the Unload node; the loader's IS_CHANGED returns it so a re-load is
+# forced after any unload (linked inputs are not available inside IS_CHANGED,
+# so a cache-key comparison there would be unreliable).
+_UNLOAD_EPOCH = 0
 _VIDEO_CACHE: OrderedDict[tuple[str, int, int, float, bool], Any] = OrderedDict()
 
 
@@ -512,12 +708,76 @@ def _get_cached_video(video_path: Path, duration: float, load_all_frames: bool):
     return video_info
 
 
-def _cache_video(video_path: Path, video_info: Any, load_all_frames: bool) -> None:
-    key = _video_cache_key(video_path, float(video_info.total_duration), load_all_frames)
+def _cache_video(video_path: Path, video_info: Any, requested_duration: float, load_all_frames: bool) -> None:
+    # Key on the *requested* duration so lookups (which only know the request)
+    # hit even when upstream truncated total_duration to the frame grid.
+    key = _video_cache_key(video_path, float(requested_duration), load_all_frames)
     _VIDEO_CACHE[key] = video_info
     _VIDEO_CACHE.move_to_end(key)
     while len(_VIDEO_CACHE) > VIDEO_CACHE_MAX_ITEMS:
         _VIDEO_CACHE.popitem(last=False)
+
+
+def _torch_compile_available() -> bool:
+    # torch.compile on CUDA needs a working Triton; without it the failure is
+    # deferred until the first compiled call, which poisons the shared cached
+    # model for every later workflow. Check up front instead.
+    try:
+        from torch.utils._triton import has_triton
+        return bool(has_triton())
+    except Exception:
+        try:
+            import triton  # noqa: F401
+            return True
+        except Exception:
+            return False
+
+
+_STAGED_OFFLOAD_WARNED = False
+
+
+def _warn_staged_offload_unsupported() -> None:
+    global _STAGED_OFFLOAD_WARNED
+    if _STAGED_OFFLOAD_WARNED:
+        return
+    _STAGED_OFFLOAD_WARNED = True
+    print(
+        "[ControlFoley] Note: the selected ControlFoley source does not accept a "
+        "staged_offload parameter (the public upstream source does not implement it); "
+        "the staged_offload option is ignored for this source."
+    )
+
+
+def _throw_if_interrupted() -> None:
+    try:
+        import comfy.model_management as model_management
+    except Exception:
+        return
+    model_management.throw_exception_if_processing_interrupted()
+
+
+def _interruptible_flow_matching_cls(base_cls):
+    class _InterruptibleFlowMatching(base_cls):
+        # The upstream euler loop has no interrupt checks, so ComfyUI's Cancel
+        # only took effect after the whole sampling loop finished. CUDA kernels
+        # are enqueued asynchronously — without a sync the Python loop races
+        # through all steps in seconds and the checks pass before the user ever
+        # cancels — so wait for the GPU to catch up before checking each step.
+        def run_t0_to_t1(self, fn, x0, t0, t1):
+            step_counter = {"n": 0}
+
+            def _checked_fn(t, x):
+                # Syncing every step costs ~10% throughput; every 4th step keeps
+                # the abort latency around a second at ~2% cost.
+                step_counter["n"] += 1
+                if step_counter["n"] % 4 == 1 and torch.cuda.is_available():
+                    torch.cuda.synchronize()
+                _throw_if_interrupted()
+                return fn(t, x)
+
+            return super().run_t0_to_t1(_checked_fn, x0, t0, t1)
+
+    return _InterruptibleFlowMatching
 
 
 def _import_public_controlfoley(source_dir: Path):
@@ -541,7 +801,8 @@ def _patch_bigvgan_from_pretrained() -> None:
         bigvgan_module = importlib.import_module("lib.bigvgan_v2.bigvgan")
         bigvgan_cls = bigvgan_module.BigVGAN
         original = bigvgan_cls._from_pretrained
-    except Exception:
+    except Exception as exc:
+        print(f"[ControlFoley] BigVGAN compatibility patch not installed: {exc}")
         return
 
     if getattr(original, "_controlfoley_compat", False):
@@ -554,6 +815,11 @@ def _patch_bigvgan_from_pretrained() -> None:
     _compat_from_pretrained._controlfoley_compat = True
     bigvgan_cls._from_pretrained = _compat_from_pretrained
 
+def _runtime_cache_key(source_dir: Path, weights_dir: Path, variant: str, device: str, precision: str, low_vram: bool, compile_encoders: bool) -> tuple:
+    device = _device_from_choice(device)
+    return (str(source_dir), str(weights_dir), variant, f"{device}:{precision}", low_vram, compile_encoders)
+
+
 def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str, precision: str, low_vram: bool, compile_encoders: bool) -> ControlFoleyRuntime:
     device = _device_from_choice(device)
     if device != "cuda":
@@ -562,7 +828,7 @@ def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str
             "Use device='cuda' until upstream CPU/MPS support is available."
         )
 
-    key = (str(source_dir), str(weights_dir), variant, f"{device}:{precision}", low_vram, compile_encoders)
+    key = _runtime_cache_key(source_dir, weights_dir, variant, device, precision, low_vram, compile_encoders)
     if key in _MODEL_CACHE:
         return _MODEL_CACHE[key]
 
@@ -623,7 +889,10 @@ def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str
         else:
             feature_utils.to(device, dtype)
         if compile_encoders:
-            feature_utils.compile()
+            if _torch_compile_available():
+                feature_utils.compile()
+            else:
+                print("[ControlFoley] compile_encoders skipped: no working Triton on this platform")
     finally:
         if low_vram and original_musicgen is not None:
             feature_extractor.MusicGen = original_musicgen
@@ -642,7 +911,7 @@ def _load_runtime(source_dir: Path, weights_dir: Path, variant: str, device: str
         seq_cfg=model_cfg.seq_cfg,
         net=net,
         feature_utils=feature_utils,
-        flow_matching_cls=flow_matching.FlowMatching,
+        flow_matching_cls=_interruptible_flow_matching_cls(flow_matching.FlowMatching),
         inference_utils=inference_utils,
         torchaudio=torchaudio,
         compile_encoders=compile_encoders,
@@ -744,8 +1013,19 @@ def _relative_to(path: Path, root: Path) -> Optional[Path]:
         return None
 
 
+def _comfy_temp_dir() -> Path:
+    if folder_paths is not None:
+        return Path(folder_paths.get_temp_directory())
+    return Path.cwd() / "temp"
+
+
 def _ui_file_entry(path: Path, file_type: str = "output") -> dict[str, str]:
-    base = _output_dir() if file_type == "output" else _input_dir()
+    if file_type == "input":
+        base = _input_dir()
+    elif file_type == "temp":
+        base = _comfy_temp_dir()
+    else:
+        base = _output_dir()
     rel = _relative_to(path, base)
     subfolder = str(rel.parent).replace("\\", "/") if rel is not None and str(rel.parent) != "." else ""
     return {"filename": path.name, "subfolder": subfolder, "type": file_type}
@@ -754,8 +1034,11 @@ def _ui_file_entry(path: Path, file_type: str = "output") -> dict[str, str]:
 def _preview_video_path(path: Path) -> Path:
     if _relative_to(path, _output_dir()) is not None or _relative_to(path, _input_dir()) is not None:
         return path
+    # Files outside output/input (e.g. the bundled demo media) are copied into the
+    # ComfyUI temp directory so /view can serve them; temp is cleared on restart,
+    # so preview copies never accumulate in the user's output folder.
     mtime_ns, size = _path_signature(path)
-    preview_dir = _output_dir() / "controlfoley" / "previews"
+    preview_dir = _comfy_temp_dir() / "controlfoley_previews"
     preview_dir.mkdir(parents=True, exist_ok=True)
     preview_path = preview_dir / f"{path.stem}_{size}_{mtime_ns}{path.suffix}"
     if not preview_path.exists():
@@ -763,12 +1046,19 @@ def _preview_video_path(path: Path) -> Path:
     return preview_path
 
 
-def _video_ui(path: Path) -> dict[str, list[dict[str, str]]]:
+def _video_ui(path: Path) -> dict[str, Any]:
+    # Mirrors the dict emitted by ComfyUI's own video save/preview nodes
+    # (ui.PreviewVideo): the stock frontend only renders video results from the
+    # "images" + "animated" keys; the VHS-style "gifs" key is ignored.
     preview_path = _preview_video_path(path)
-    file_type = "input" if _relative_to(preview_path, _input_dir()) is not None else "output"
+    if _relative_to(preview_path, _input_dir()) is not None:
+        file_type = "input"
+    elif _relative_to(preview_path, _output_dir()) is not None:
+        file_type = "output"
+    else:
+        file_type = "temp"
     entry = _ui_file_entry(preview_path, file_type)
-    entry["format"] = "video/mp4"
-    return {"gifs": [entry]}
+    return {"images": [entry], "animated": (True,)}
 
 
 def _audio_ui(path: Path) -> dict[str, list[dict[str, str]]]:
@@ -784,6 +1074,12 @@ class LoadControlFoleyDependencies:
                 "model_weights_dir": ("STRING", {"default": DEFAULT_MODEL_WEIGHTS_DIR}),
                 "low_vram": ("BOOLEAN", {"default": False}),
                 "auto_download": ("BOOLEAN", {"default": True}),
+                "auto_fetch_source": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "When the public ControlFoley source tree is not found locally, run 'git clone' "
+                               "(pinned revision) from GitHub into <ComfyUI root>/controlfoley. "
+                               "Set the CONTROLFOLEY_SOURCE_URL environment variable to use a mirror.",
+                }),
             }
         }
 
@@ -792,8 +1088,8 @@ class LoadControlFoleyDependencies:
     FUNCTION = "load_dependencies"
     CATEGORY = CATEGORY
 
-    def load_dependencies(self, controlfoley_source_dir, model_weights_dir, low_vram, auto_download):
-        source_dir = _resolve_controlfoley_source_dir(controlfoley_source_dir)
+    def load_dependencies(self, controlfoley_source_dir, model_weights_dir, low_vram, auto_download, auto_fetch_source=True):
+        source_dir = _resolve_source_dir_with_auto_fetch(controlfoley_source_dir, bool(auto_fetch_source))
         weights_dir = _resolve_weights_dir(model_weights_dir)
         if source_dir is None:
             raise ValueError("ControlFoley source directory is required.")
@@ -818,6 +1114,12 @@ class LoadControlFoleyModel:
                 "precision": (["bf16", "fp16", "fp32"], {"default": "bf16"}),
                 "low_vram": ("BOOLEAN", {"default": False}),
                 "compile_encoders": ("BOOLEAN", {"default": False}),
+                "auto_fetch_source": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "When the public ControlFoley source tree is not found locally, run 'git clone' "
+                               "(pinned revision) from GitHub into <ComfyUI root>/controlfoley. "
+                               "Set the CONTROLFOLEY_SOURCE_URL environment variable to use a mirror.",
+                }),
             },
             "optional": {
                 "dependencies": (CONTROLFOLEY_DEPENDENCIES_TYPE,),
@@ -829,13 +1131,20 @@ class LoadControlFoleyModel:
     FUNCTION = "load"
     CATEGORY = CATEGORY
 
-    def load(self, controlfoley_source_dir, model_weights_dir, variant, device, precision, low_vram, compile_encoders, dependencies=None):
+    @classmethod
+    def IS_CHANGED(cls, *args, **kwargs):
+        # Force a re-load after any unload; otherwise the executor could hand
+        # downstream nodes a stale, already-unloaded runtime. Widget changes are
+        # covered by the executor's normal input comparison.
+        return f"unload_epoch:{_UNLOAD_EPOCH}"
+
+    def load(self, controlfoley_source_dir, model_weights_dir, variant, device, precision, low_vram, compile_encoders, auto_fetch_source=True, dependencies=None):
         if dependencies is not None:
             source_dir = dependencies.source_dir
             weights_dir = dependencies.weights_dir
             low_vram = dependencies.low_vram
         else:
-            source_dir = _resolve_controlfoley_source_dir(controlfoley_source_dir)
+            source_dir = _resolve_source_dir_with_auto_fetch(controlfoley_source_dir, bool(auto_fetch_source))
             weights_dir = _resolve_weights_dir(model_weights_dir)
         if source_dir is None:
             raise ValueError("ControlFoley source and weights directories are required.")
@@ -862,6 +1171,12 @@ class ControlFoleyTorchCompile:
     def compile(self, controlfoley_model, compile_encoders, compile_generator):
         runtime: ControlFoleyRuntime = controlfoley_model
         messages = []
+        if (compile_encoders or compile_generator) and not _torch_compile_available():
+            # Compiling without Triton would defer a TritonMissing crash into the
+            # first generation and poison the shared cached model for later runs.
+            message = "torch.compile skipped: no working Triton on this platform"
+            print(f"[ControlFoley] {message}")
+            return (runtime, message)
         if compile_encoders and hasattr(runtime.feature_utils, "compile"):
             runtime.feature_utils.compile()
             messages.append("feature encoders compiled")
@@ -890,7 +1205,12 @@ class ControlFoleyGenerateAdvanced:
                 "guidance_scale": ("FLOAT", {"default": 4.5, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "mask_away_clip": ("BOOLEAN", {"default": False}),
                 "cache_video_features": ("BOOLEAN", {"default": True}),
-                "staged_offload": ("BOOLEAN", {"default": True}),
+                "staged_offload": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Move encoders to CPU during sampling when the ControlFoley source supports it. "
+                               "The public upstream source does not implement this; the option is then ignored "
+                               "and a console note is printed.",
+                }),
                 "clip_batch_size_multiplier": ("STRING", {
                     "default": "40",
                     "tooltip": "Integer 1-80. Frames per CLIP encoder call = batch size * multiplier. Use 4-8 on low-VRAM GPUs.",
@@ -966,7 +1286,12 @@ class ControlFoleySimpleGenerate:
                 "guidance_scale": ("FLOAT", {"default": 4.5, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "mask_away_clip": ("BOOLEAN", {"default": False}),
                 "cache_video_features": ("BOOLEAN", {"default": True}),
-                "staged_offload": ("BOOLEAN", {"default": True}),
+                "staged_offload": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Move encoders to CPU during sampling when the ControlFoley source supports it. "
+                               "The public upstream source does not implement this; the option is then ignored "
+                               "and a console note is printed.",
+                }),
                 "clip_batch_size_multiplier": ("STRING", {
                     "default": "40",
                     "tooltip": "Integer 1-80. Use 4-8 on low-VRAM GPUs.",
@@ -979,6 +1304,12 @@ class ControlFoleySimpleGenerate:
                 "image_fps": ("FLOAT", {"default": 24.0, "min": 1.0, "max": 120.0, "step": 1.0}),
                 "enabled": ("BOOLEAN", {"default": True}),
                 "silent_audio_on_error": ("BOOLEAN", {"default": False}),
+                "auto_fetch_source": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "When the public ControlFoley source tree is not found locally, run 'git clone' "
+                               "(pinned revision) from GitHub into <ComfyUI root>/controlfoley. "
+                               "Set the CONTROLFOLEY_SOURCE_URL environment variable to use a mirror.",
+                }),
             },
             "optional": {
                 "video": (CONTROLFOLEY_VIDEO_TYPE,),
@@ -996,12 +1327,12 @@ class ControlFoleySimpleGenerate:
                  prompt, negative_prompt, duration, seed, num_inference_steps, guidance_scale, mask_away_clip,
                  cache_video_features, staged_offload, clip_batch_size_multiplier=40, sync_batch_size_multiplier=40,
                  video=None, video_input=None, images=None, reference_audio_path="", image_fps=24.0,
-                 enabled=True, silent_audio_on_error=False):
+                 enabled=True, silent_audio_on_error=False, auto_fetch_source=True):
         if not enabled:
             silent = _make_silent_audio(float(duration), 44100)
             return (silent, int(silent["sample_rate"]), 0.0, 0.0, "Generation disabled; returned silence.")
         dependencies = ControlFoleyDependencies(
-            source_dir=_resolve_controlfoley_source_dir(controlfoley_source_dir) or Path(controlfoley_source_dir),
+            source_dir=_resolve_source_dir_with_auto_fetch(controlfoley_source_dir, bool(auto_fetch_source)) or Path(controlfoley_source_dir),
             weights_dir=_resolve_weights_dir(model_weights_dir),
             low_vram=bool(low_vram),
         )
@@ -1025,8 +1356,8 @@ class LoadControlFoleyVideo:
             }
         }
 
-    RETURN_TYPES = (CONTROLFOLEY_VIDEO_TYPE, "STRING")
-    RETURN_NAMES = ("controlfoley_video", "video_path")
+    RETURN_TYPES = (CONTROLFOLEY_VIDEO_TYPE, "STRING", "VIDEO")
+    RETURN_NAMES = ("controlfoley_video", "video_path", "video_output")
     FUNCTION = "load"
     OUTPUT_NODE = True
     CATEGORY = CATEGORY
@@ -1039,6 +1370,15 @@ class LoadControlFoleyVideo:
         mtime_ns, size = _path_signature(resolved)
         return f"{resolved}:{mtime_ns}:{size}:{float(duration)}"
 
+    @staticmethod
+    def _native_video_output(path: Path):
+        try:
+            from comfy_api.latest import InputImpl
+        except Exception as exc:
+            print(f"[ControlFoley] Native VIDEO output unavailable in this ComfyUI version: {exc}")
+            return None
+        return InputImpl.VideoFromFile(str(path))
+
     def load(self, video_path, duration):
         resolved = _resolve_path(video_path)
         if resolved is None or not resolved.exists():
@@ -1047,7 +1387,7 @@ class LoadControlFoleyVideo:
             raise ValueError(f"Input video path must be a file, not a directory: {video_path}")
         source_duration = _media_duration(resolved)
         effective_duration = _bounded_duration(source_duration or duration, float(duration))
-        result = ({"path": resolved, "duration": effective_duration}, str(resolved))
+        result = ({"path": resolved, "duration": effective_duration}, str(resolved), self._native_video_output(resolved))
         return {"ui": _video_ui(resolved), "result": result}
 
 
@@ -1065,7 +1405,12 @@ class ControlFoleyGenerate:
                 "guidance_scale": ("FLOAT", {"default": 4.5, "min": 0.0, "max": 20.0, "step": 0.1}),
                 "mask_away_clip": ("BOOLEAN", {"default": False}),
                 "cache_video_features": ("BOOLEAN", {"default": True}),
-                "staged_offload": ("BOOLEAN", {"default": True}),
+                "staged_offload": ("BOOLEAN", {
+                    "default": True,
+                    "tooltip": "Move encoders to CPU during sampling when the ControlFoley source supports it. "
+                               "The public upstream source does not implement this; the option is then ignored "
+                               "and a console note is printed.",
+                }),
                 "clip_batch_size_multiplier": ("STRING", {
                     "default": "40",
                     "tooltip": "Integer 1-80. Frames per CLIP encoder call = batch size * multiplier. Use 4-8 on low-VRAM GPUs.",
@@ -1118,6 +1463,11 @@ class ControlFoleyGenerate:
                        clip_batch_size_multiplier=40, sync_batch_size_multiplier=40,
                        video=None, video_input=None, images=None, reference_audio_path="", image_fps=24.0):
         runtime: ControlFoleyRuntime = controlfoley_model
+        if runtime.net is None or runtime.feature_utils is None:
+            raise RuntimeError(
+                "This ControlFoley model was unloaded. Re-run the ControlFoley Model Loader "
+                "(or restart ComfyUI) to load it again."
+            )
         if runtime.device != "cuda":
             raise RuntimeError("ControlFoley public inference is currently CUDA-only in this node.")
         if torch.cuda.is_available():
@@ -1159,7 +1509,7 @@ class ControlFoleyGenerate:
                 if video_info is None:
                     video_info = runtime.inference_utils.load_video(video_path, requested_duration, load_all_frames=False)
                     if cache_video_features:
-                        _cache_video(video_path, video_info, False)
+                        _cache_video(video_path, video_info, requested_duration, False)
                 if video_info.total_duration < duration:
                     duration = video_info.total_duration
                 clip_frames = None if mask_away_clip else video_info.clip_embeddings.unsqueeze(0)
@@ -1194,6 +1544,8 @@ class ControlFoleyGenerate:
             supports_sync_batch = "sync_batch_size_multiplier" in generate_params or supports_kwargs
             if supports_staged_offload:
                 generate_kwargs["staged_offload"] = bool(staged_offload or runtime.low_vram)
+            elif staged_offload:
+                _warn_staged_offload_unsupported()
             if supports_clip_batch:
                 generate_kwargs["clip_batch_size_multiplier"] = int(clip_batch_size_multiplier)
             if supports_sync_batch:
@@ -1242,7 +1594,13 @@ class SaveControlFoleyAudio:
                 "audio": (AUDIO_TYPE,),
                 "filename_prefix": ("STRING", {"default": "controlfoley/output"}),
                 "format": (["wav", "flac"], {"default": "wav"}),
-            }
+            },
+            # The stock frontend only auto-creates an audio player for a hard-coded
+            # list of core node classes; custom nodes must declare the AUDIO_UI
+            # widget themselves for the ui.audio result to get a player.
+            "optional": {
+                "audioUI": ("AUDIO_UI",),
+            },
         }
 
     RETURN_TYPES = (AUDIO_TYPE, CONTROLFOLEY_AUDIO_FILE_TYPE, "STRING")
@@ -1252,10 +1610,10 @@ class SaveControlFoleyAudio:
     CATEGORY = CATEGORY
 
     @classmethod
-    def IS_CHANGED(cls, audio, filename_prefix, format):
+    def IS_CHANGED(cls, audio, filename_prefix, format, audioUI=None):
         return time.time_ns()
 
-    def save(self, audio, filename_prefix, format):
+    def save(self, audio, filename_prefix, format, audioUI=None):
         import soundfile as sf
         out_dir = _output_dir()
         relative = _safe_path(filename_prefix, "controlfoley/output", f".{format}")
@@ -1316,7 +1674,7 @@ class MuxControlFoleyAudioToVideo:
         video_info = _get_cached_video(video_path, duration, True)
         if video_info is None:
             video_info = runtime.inference_utils.load_video(video_path, duration, load_all_frames=True)
-            _cache_video(video_path, video_info, True)
+            _cache_video(video_path, video_info, duration, True)
         relative = _safe_path(output_filename, "controlfoley/output.mp4", ".mp4")
         audio_stem = audio.get("stem") if isinstance(audio, dict) else None
         if audio_stem:
@@ -1327,8 +1685,58 @@ class MuxControlFoleyAudioToVideo:
             )
             out_path = Path(full_output_folder) / f"{filename}_{counter:05}_.mp4"
         runtime.inference_utils.make_video(video_info, out_path, waveform.cpu(), int(audio["sample_rate"]))
+        _fix_mux_container_timing(out_path)
         result = ({"path": out_path}, str(out_path))
         return {"ui": _video_ui(out_path), "result": result}
+
+
+def _fix_mux_container_timing(path: Path) -> None:
+    """Rewrite the muxed file (stream copy) with per-packet durations.
+
+    The upstream muxer pins every frame's pts but never sets packet durations,
+    so ffmpeg guesses ~1/24 s for the final video frame. That inflates the
+    container duration past the real content span, and players then show a
+    longer total for the MP4 than for the WAV saved from the same waveform.
+    """
+    import av
+
+    tmp = path.with_name(path.stem + ".timing" + path.suffix)
+    try:
+        with av.open(str(path)) as src:
+            with av.open(str(tmp), "w") as dst:
+                mapping = {}
+                for stream in src.streams:
+                    if hasattr(dst, "add_stream_from_template"):
+                        mapping[stream.index] = dst.add_stream_from_template(stream)
+                    else:
+                        mapping[stream.index] = dst.add_stream(template=stream)
+                packets = [pk for pk in src.demux() if pk.pts is not None and pk.dts is not None]
+                durations: dict[int, dict[int, int]] = {}
+                for pk in packets:
+                    durations.setdefault(pk.stream.index, {})[pk.pts] = pk.duration or 0
+                for idx, by_pts in durations.items():
+                    pts_sorted = sorted(by_pts)
+                    deltas = [b - a for a, b in zip(pts_sorted, pts_sorted[1:])]
+                    if not deltas:
+                        continue
+                    typical = min(deltas)
+                    for a, b in zip(pts_sorted, pts_sorted[1:]):
+                        by_pts[a] = b - a
+                    by_pts[pts_sorted[-1]] = typical
+                for pk in packets:
+                    fixed = durations.get(pk.stream.index, {}).get(pk.pts)
+                    if fixed:
+                        pk.duration = fixed
+                    pk.stream = mapping[pk.stream.index]
+                    dst.mux(pk)
+        os.replace(str(tmp), str(path))
+    except Exception as exc:
+        print(f"[ControlFoley] Could not normalize muxed container timing: {exc}")
+        try:
+            if tmp.exists():
+                tmp.unlink()
+        except Exception:
+            pass
 
 
 class UnloadControlFoleyModel:
@@ -1346,11 +1754,18 @@ class UnloadControlFoleyModel:
     CATEGORY = CATEGORY
 
     def unload(self, controlfoley_model, after=None):
+        global _UNLOAD_EPOCH
         if after is None:
             return ("Connect the after input to unload after generation",)
         keys = [k for k, v in _MODEL_CACHE.items() if v is controlfoley_model]
         for key in keys:
             _MODEL_CACHE.pop(key, None)
+        _UNLOAD_EPOCH += 1
+        # Popping the cache alone does not free VRAM: ComfyUI's execution cache
+        # still references the runtime object, so drop its tensors explicitly.
+        # (The loader's IS_CHANGED forces a re-load before the gutted runtime
+        # could reach a generation node again.)
+        controlfoley_model.unload()
         _VIDEO_CACHE.clear()
         gc.collect()
         if torch.cuda.is_available():

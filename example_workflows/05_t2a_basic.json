@@ -30,7 +30,8 @@
         "auto",
         "bf16",
         false,
-        false
+        false,
+        true
       ]
     },
     {
@@ -87,7 +88,7 @@
       ],
       "size": [
         330,
-        120
+        190
       ],
       "inputs": [
         {
@@ -106,7 +107,7 @@
       "type": "UnloadControlFoleyModel",
       "pos": [
         1020,
-        300
+        380
       ],
       "size": [
         280,

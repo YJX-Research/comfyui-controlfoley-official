@@ -13,7 +13,7 @@ Official ComfyUI custom nodes and full-task workflows for [ControlFoley](https:/
 
 - Generate sound effects / Foley audio that follows the visual content of a video, with optional control from text prompts or reference audio.
 - Run video-to-audio (V2A), text-to-audio (T2A), text-guided video-to-audio (TV2A/TC-V2A), and reference-audio-guided video-to-audio (AC-V2A) workflows directly in ComfyUI.
-- Load the public ControlFoley source tree and download missing Hugging Face weights on demand.
+- Auto-fetch the public ControlFoley source tree (pinned revision) and download missing Hugging Face weights on demand.
 - Save generated audio as WAV/FLAC and mux generated audio back into video.
 - Use bundled workflow templates and release-reviewed demo media for quick inspection.
 
@@ -37,7 +37,7 @@ This repository is a ComfyUI integration layer. It does not modify the ControlFo
 
 Install `ControlFoley Official` from [Comfy Registry](https://registry.comfy.org/publishers/yjx-research/nodes/ComfyUI-ControlFoley) / ComfyUI Manager. This installs the custom node package and bundled workflow templates.
 
-After installing the node, clone the public ControlFoley repository separately. The node auto-detects a folder named `controlfoley` next to this custom node, under the ComfyUI root, or from `CONTROLFOLEY_SOURCE_DIR`; otherwise set `controlfoley_source_dir` manually in the workflow.
+After installing the node, the public ControlFoley source tree is fetched automatically on first use: when `auto_fetch_source` is enabled (the default) and no local copy is found, the node shallow-clones a pinned revision of the upstream repository into `<ComfyUI root>/controlfoley` using `git`. If GitHub is unreachable from your network, set the `CONTROLFOLEY_SOURCE_URL` environment variable to a reachable mirror of the repository, or clone it manually as described below. The node auto-detects a folder named `controlfoley` next to this custom node, under the ComfyUI root, or from `CONTROLFOLEY_SOURCE_DIR`; otherwise set `controlfoley_source_dir` manually in the workflow.
 
 For source installation, clone this custom node into `ComfyUI/custom_nodes`:
 
@@ -52,7 +52,9 @@ This repository is published at `YJX-Research/comfyui-controlfoley-official`; th
 
 `requirements.txt` does not install `torch`, `torchaudio`, or `torchvision`; use the versions from your ComfyUI/PyTorch CUDA environment.
 
-Clone the public ControlFoley repository separately:
+> **Note:** `requirements.txt` uses minimum-version ranges, so running `pip install -r requirements.txt` may upgrade shared packages (for example `numpy` or `transformers`) that your existing ComfyUI environment depends on. On an already-working ComfyUI install, prefer installing only the packages that are actually missing, one at a time.
+
+Manual source setup (optional, for offline or custom layouts — otherwise `auto_fetch_source` handles this):
 
 ```bash
 git clone https://github.com/xiaomi-research/controlfoley controlfoley
@@ -69,10 +71,10 @@ python main.py
 
 1. Install ComfyUI.
 2. Clone this custom node into `ComfyUI/custom_nodes`.
-3. Install requirements with `pip install -r requirements.txt`; keep the existing ComfyUI PyTorch stack.
-4. Clone the public ControlFoley repository as `controlfoley` next to this custom node or under the ComfyUI root, or set `CONTROLFOLEY_SOURCE_DIR`.
+3. Install requirements with `pip install -r requirements.txt` (see the note above about version ranges on existing environments); keep the existing ComfyUI PyTorch stack.
+4. The public ControlFoley source is fetched automatically on first run (`auto_fetch_source`, enabled by default). To manage it yourself, clone it as `controlfoley` next to this custom node or under the ComfyUI root, or set `CONTROLFOLEY_SOURCE_DIR`.
 5. Start ComfyUI.
-6. Open the bundled templates from ComfyUI Browse Templates or load a workflow from `examples/workflows`.
+6. Open the bundled templates from ComfyUI Browse Templates or load a workflow from `example_workflows`.
 7. Leave `model_weights_dir` as `path/to/model_weights` to use the default download directory, or set a custom local path.
 8. The bundled workflow templates point to demo media under this node's `examples/generated` folder. You can also copy inputs into `ComfyUI/input/assets` or edit the workflow paths.
 9. Run the workflow. Output nodes show audio/video previews and save files under `ComfyUI/output/controlfoley`.
@@ -80,6 +82,16 @@ python main.py
 ## 📦 ControlFoley Weights
 
 This repository does not include ControlFoley model weights. During `ControlFoley Model Loader` or `ControlFoley Dependencies Loader`, missing weights are downloaded from Hugging Face into the configured `model_weights_dir`.
+
+The five ControlFoley weight files total roughly **16 GB** (about 11 GB core weights plus 5 GB external encoder weights), and the third-party dependency models cached by Hugging Face add several more GB. The first model load therefore takes a while even on a fast connection.
+
+> **If huggingface.co is unreachable or very slow from your network**, set the `HF_ENDPOINT` environment variable to a mirror **before starting ComfyUI**, otherwise the first download can appear to hang with no error:
+>
+> ```bash
+> export HF_ENDPOINT=https://hf-mirror.com
+> ```
+>
+> On Windows PowerShell: `$env:HF_ENDPOINT = "https://hf-mirror.com"`.
 
 If `model_weights_dir` is empty or left as `path/to/model_weights`, the node uses `CONTROLFOLEY_WEIGHTS_DIR` when set, then an existing packaged `controlfoley_workspace/model_weights`, then `ComfyUI/models/controlfoley`. The node registers `ComfyUI/models/controlfoley` with ComfyUI's model folder system under the `controlfoley` key.
 
@@ -122,17 +134,17 @@ comfyui-controlfoley/
   docs/
     known_issues.md
     vram_speed_log.md
+  example_workflows/
+    01_v2a_basic.json
+    02_tcv2a_text_controlled.json
+    03_acv2a_audio_controlled.json
+    04_tv2a_text_video.json
+    05_t2a_basic.json
+    06_advanced_chain.json
+    07_simple_generate.json
   examples/
     inputs/README.md
-    generated/README.md
-    workflows/
-      01_v2a_basic.json
-      02_tcv2a_text_controlled.json
-      03_acv2a_audio_controlled.json
-      04_tv2a_text_video.json
-      05_t2a_basic.json
-      06_advanced_chain.json
-      07_simple_generate.json
+    generated/
 ```
 
 Do not commit ControlFoley weights, Hugging Face caches, ComfyUI outputs, or local runtime files.
@@ -140,19 +152,19 @@ Do not commit ControlFoley weights, Hugging Face caches, ComfyUI outputs, or loc
 ## 🧩 Available Nodes
 
 - **ControlFoley Simple Generate**: one-node path for loading the model and generating audio in the same node.
-- **ControlFoley Dependencies Loader**: validates the public ControlFoley source tree, downloads missing ControlFoley weights, and prefetches known Hugging Face dependencies.
+- **ControlFoley Dependencies Loader**: validates the public ControlFoley source tree (auto-fetching it when `auto_fetch_source` is enabled), downloads missing ControlFoley weights, and prefetches known Hugging Face dependencies.
 - **ControlFoley Model Loader**: loads ControlFoley and related encoders from local source and weight directories, optionally using the dependency-loader output.
 - **ControlFoley Torch Compile**: optional advanced node for compiling feature encoders and, if requested, the generator module.
-- **ControlFoley Video Loader**: resolves a video path from ComfyUI `input` or an absolute path.
+- **ControlFoley Video Loader**: resolves a video path from ComfyUI `input` or an absolute path, shows an inline preview of the loaded video, and exposes a native ComfyUI `VIDEO` output for chaining into core video nodes.
 - **ControlFoley Generate**: runs V2A, TV2A, TC-V2A, AC-V2A, or T2A/TTA depending on connected inputs and parameters. It accepts the `ControlFoley Video Loader` output, native ComfyUI `VIDEO`, or native ComfyUI `IMAGE` batches.
 - **ControlFoley Advanced Generate**: same generation path with `enabled`, `silent_audio_on_error`, and a status output for complex workflows.
-- **ControlFoley Save Audio**: writes generated audio to `ComfyUI/output` as WAV or FLAC.
-- **ControlFoley Video-Audio Muxer**: writes an MP4 with generated audio replacing the original audio track.
+- **ControlFoley Save Audio**: writes generated audio to `ComfyUI/output` as WAV or FLAC and shows an inline audio player.
+- **ControlFoley Video-Audio Muxer**: writes an MP4 with generated audio replacing the original audio track and shows an inline video preview.
 - **ControlFoley Model Unloader**: releases cached model objects and clears CUDA cache.
 
 ## 🧪 Demo Workflows
 
-Workflow templates are in `examples/workflows`:
+Workflow templates are in `example_workflows` (also available in ComfyUI Browse Templates):
 
 | File | Task | Outputs |
 | --- | --- | --- |
@@ -164,7 +176,7 @@ Workflow templates are in `examples/workflows`:
 | `06_advanced_chain.json` | Advanced generation chain | WAV |
 | `07_simple_generate.json` | Simple one-node T2A generation | WAV |
 
-Before running any workflow, make sure the local ControlFoley source tree is available and review the weight directory setting:
+Before running any workflow, review the source and weight directory settings (the source tree is fetched automatically by default; prepare it manually only for offline or custom layouts):
 
 - `controlfoley`: default source-tree value. The node auto-detects a local clone named `controlfoley` next to this custom node, under the ComfyUI root, or from `CONTROLFOLEY_SOURCE_DIR`; replace it with an absolute path if needed.
 - `path/to/model_weights`: keep this placeholder to use the default automatic download directory, or replace it with a custom writable local weight directory.
@@ -266,14 +278,14 @@ Implemented options:
 - Optional video feature caching.
 - Optional CLIP masking through `mask_away_clip`.
 - `clip_batch_size_multiplier` and `sync_batch_size_multiplier` tune feature-extractor frame batches for VRAM/performance tradeoffs.
-- `staged_offload` moves encoders to CPU during DiT sampling and restores them for decode/vocode.
+- `staged_offload` moves encoders to CPU during DiT sampling and restores them for decode/vocode **when the selected ControlFoley source implements it**. The pinned public upstream source does not accept this parameter; the option is then ignored and a console note is printed.
 - Optional `compile_encoders` for users who want to pay one-time `torch.compile` cost.
 - `low_vram` path for text-only T2A/TTA runs.
 - `ControlFoley Model Unloader` node.
 - CUDA cache cleanup after low-VRAM generation.
 - Medium/low-VRAM bundled workflow defaults: `bf16`, `low_vram=false`, `staged_offload=true`, `clip_batch_size_multiplier=8`, `sync_batch_size_multiplier=8`, and 25-step generation.
 
-For V2A, TV2A, TC-V2A, and AC-V2A memory reduction, keep `low_vram=false` and use `staged_offload=true`. `low_vram=true` remains a text-only T2A/TTA path.
+For V2A, TV2A, TC-V2A, and AC-V2A memory reduction, keep `low_vram=false`; `staged_offload=true` helps when the source supports it (it is ignored with a console note on the public upstream source). `low_vram=true` remains a text-only T2A/TTA path.
 
 ## 📊 VRAM and Speed Benchmark
 
@@ -288,7 +300,7 @@ Cold-start behavior:
 Memory guidance:
 
 - Use a CUDA GPU; CPU/MPS execution is not supported by this node's integrated public inference path.
-- Use `staged_offload=true` to reduce memory pressure in V2A, TV2A, TC-V2A, and AC-V2A workflows.
+- Use `staged_offload=true` to reduce memory pressure in V2A, TV2A, TC-V2A, and AC-V2A workflows on sources that implement it (ignored with a console note on the public upstream source).
 - Lower `clip_batch_size_multiplier` and `sync_batch_size_multiplier` only when feature extraction peaks too high; this trades speed for memory during encoder feature extraction.
 - `low_vram=true` is intended for text-only T2A/TTA; keep it `false` for V2A, TV2A, TC-V2A, and AC-V2A.
 - Keep `num_inference_steps=25` for normal output quality. Lower step counts mainly reduce runtime, not peak VRAM, and are only useful for quick internal smoke checks.
@@ -299,7 +311,7 @@ See `docs/known_issues.md`.
 
 Important alpha limitations:
 
-- Use `staged_offload=true` for video/reference-audio workflows on smaller GPUs.
+- Use `staged_offload=true` for video/reference-audio workflows on smaller GPUs when the selected source implements it (the public upstream source ignores it with a console note).
 - Missing weights and known Hugging Face dependency models are downloaded during model loading.
 - `ControlFoley Video-Audio Muxer` currently supports replace-original-audio mode only; mix mode is planned.
 - The public ControlFoley inference path is CUDA-only in this node.

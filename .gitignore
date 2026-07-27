@@ -43,7 +43,7 @@ hf_assets/
 
 # Keep docs, workflows, and approved generated demo media tracked.
 !examples/inputs/README.md
-!examples/workflows/*.json
+!example_workflows/*.json
 !examples/generated/
 !examples/generated/**
 
@@ -53,3 +53,7 @@ Thumbs.db
 
 # Local scratch exports
 local_*
+
+# Review artifacts (local only)
+.review/
+.pr_body.md

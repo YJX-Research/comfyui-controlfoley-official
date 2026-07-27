@@ -290,5 +290,9 @@ README 改动同样一条一 commit、同样过复审。
 - 复审两条:(1) `key in _MODEL_CACHE` token 在 unload→rerun→unload 循环下值不变会漏跑;(2) IS_CHANGED 中连接输入(dependencies)传入为 None,按 widget 算 key 会算错。**均接受**——F3.12b 改为全局 `_UNLOAD_EPOCH` 方案,不再在 IS_CHANGED 里算 key。
 - F3.12b 复审指出全局纪元粒度粗,任一 unload 会让所有 Loader 变脏、独立分支的下游生成被连带重跑。**接受为已知残留、不改**:per-model 精确失效需要在 IS_CHANGED 里算 key,而连接输入不可用(即第 2 条否掉的路);粗粒度多付的是多模型并存工作流的重复计算,换来"绝不把已卸载模型喂给下游"的安全性;出厂 7 模板均为单模型链,不受影响。已列入 PR"已知残留"。
 
+### F3.13(29a5fe8)
+- 复审未发现实际缺陷:demux 顺序原样回写不打乱 B 帧 dts 序;按 stream index 映射;时基一致;Windows 下容器关闭后再 `os.replace`;异常保留原文件。
+- 实测:容器 6.0977 → 6.0836(视频轨 6.0644 = 真实内容跨度),727 帧全解码、音频采样数不变。
+
 ### F4.R5(7a3885e + R5b 65792e0)
 - 复审指出 Known Issues 段还有一句未加限定——**接受**,R5b 修正。其余段落与 `supports_staged_offload` 探测逻辑核对一致。

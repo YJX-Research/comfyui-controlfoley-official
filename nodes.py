@@ -257,21 +257,25 @@ def _ensure_hf_dependency_cache(low_vram: bool) -> None:
 
     for repo_id in dependency_repos(low_vram):
         try:
-            snapshot_download(repo_id=repo_id)
-            continue
-        except Exception as exc:
-            network_error = exc
-        try:
-            # Offline or unreachable network: a complete local cache is fine.
-            # (Network-first keeps the original repair semantics for partial caches.)
+            # Probe the local cache first. A network-first call cannot be trusted
+            # to fail fast: on links that stall mid-transfer rather than refuse,
+            # huggingface_hub keeps retrying and never reaches the offline
+            # fallback, even with a complete cache on disk. This probe touches no
+            # network, and an incomplete cache still falls through to a download.
             snapshot_download(repo_id=repo_id, local_files_only=True)
+            continue
+        except Exception:
+            pass
+        try:
+            snapshot_download(repo_id=repo_id)
         except Exception as exc:
             raise RuntimeError(
-                f"Could not auto-download ControlFoley dependency weights from {repo_id} "
-                f"({network_error}) and no complete local cache was found. "
+                f"Could not download ControlFoley dependency weights from {repo_id} "
+                "and no complete local cache was found. "
                 "If you are offline, pre-cache this repository once while online. If Hugging Face "
-                "is unreachable from your network, set the HF_ENDPOINT environment variable to a mirror "
-                "(for example https://hf-mirror.com) and retry."
+                "is unreachable or slow from your network, set the HF_ENDPOINT environment variable "
+                "to a mirror (for example https://hf-mirror.com) and retry; with a complete local "
+                "cache you can also set HF_HUB_OFFLINE=1 to skip network access entirely."
             ) from exc
 
 

@@ -46,6 +46,7 @@ hf_assets/
 !example_workflows/*.json
 !examples/generated/
 !examples/generated/**
+!docs/assets/*.mp4
 
 # OS
 .DS_Store

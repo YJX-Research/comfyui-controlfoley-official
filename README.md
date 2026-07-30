@@ -19,6 +19,13 @@ Official ComfyUI custom nodes and full-task workflows for [ControlFoley](https:/
 
 > ⭐ If this ComfyUI node is useful for your workflow, please consider starring both this repository and the original [ControlFoley](https://github.com/xiaomi-research/controlfoley) repository.
 
+
+## Demo Video
+
+<video src="docs/assets/controlfoley_comfyui_demo.mp4" controls width="100%"></video>
+
+[Watch the ComfyUI demo video](docs/assets/controlfoley_comfyui_demo.mp4): install from Comfy Registry, open bundled workflow templates, run V2A / TC-V2A / AC-V2A / TV2A / T2A workflows, and preview generated audio/video outputs in ComfyUI.
+
 This repository is a ComfyUI integration layer. It does not modify the ControlFoley model architecture, retrain models, or include ControlFoley model weights.
 
 ## ✨ Features

@@ -37,3 +37,6 @@ hf_assets/
 .DS_Store
 Thumbs.db
 local_*
+
+# Keep promotional README video out of the Registry package.
+docs/assets/*.mp4

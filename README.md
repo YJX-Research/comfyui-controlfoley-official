@@ -22,9 +22,9 @@ Official ComfyUI custom nodes and full-task workflows for [ControlFoley](https:/
 
 ## Demo Video
 
-<video src="docs/assets/controlfoley_comfyui_demo.mp4" controls width="100%"></video>
+https://github.com/user-attachments/assets/c5cfd10d-4ce8-43b4-919e-0456e3cd59b9
 
-[Watch the ComfyUI demo video](docs/assets/controlfoley_comfyui_demo.mp4): install from Comfy Registry, open bundled workflow templates, run V2A / TC-V2A / AC-V2A / TV2A / T2A workflows, and preview generated audio/video outputs in ComfyUI.
+Watch the ComfyUI demo video: install from Comfy Registry, open bundled workflow templates, run V2A / TC-V2A / AC-V2A / TV2A / T2A workflows, and preview generated audio/video outputs in ComfyUI.
 
 This repository is a ComfyUI integration layer. It does not modify the ControlFoley model architecture, retrain models, or include ControlFoley model weights.
 

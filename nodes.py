@@ -1,6 +1,8 @@
 import gc
 import inspect
 import importlib
+import importlib.machinery
+import importlib.util
 import os
 import shutil
 import stat
@@ -780,6 +782,38 @@ def _interruptible_flow_matching_cls(base_cls):
     return _InterruptibleFlowMatching
 
 
+def _bind_package_name(name: str, location: Path) -> None:
+    # The upstream source ships `lib/` and `controlfoley/` without __init__.py, so both are
+    # namespace packages. A regular package of the same name anywhere on sys.path, or one
+    # another custom node already imported, wins over a namespace package regardless of
+    # sys.path order, and e.g. `import lib.flow_matching` then fails. Pin the name to the
+    # upstream directory instead.
+    target = os.path.normcase(os.path.abspath(str(location)))
+    current = sys.modules.get(name)
+    if current is not None:
+        paths = [os.path.normcase(os.path.abspath(p)) for p in getattr(current, "__path__", [])]
+        if paths == [target]:
+            return
+        print(f"[ControlFoley] Rebinding package '{name}' to the ControlFoley source (was: {paths or current})")
+    purged = [k for k in sys.modules if k == name or k.startswith(name + ".")]
+    for key in purged:
+        del sys.modules[key]
+    # inspect caches each module name's __file__. A stale entry left by the replaced package
+    # makes inspect.getmodule() (called by torch while registering ops) raise TypeError on
+    # the new namespace module, whose __file__ is None.
+    files_by_name = getattr(inspect, "_filesbymodname", None)
+    if isinstance(files_by_name, dict):
+        for key in purged:
+            files_by_name.pop(key, None)
+    modules_by_file = getattr(inspect, "modulesbyfile", None)
+    if isinstance(modules_by_file, dict):
+        for path in [p for p, mod_name in modules_by_file.items() if mod_name in purged]:
+            del modules_by_file[path]
+    spec = importlib.machinery.ModuleSpec(name, None, is_package=True)
+    spec.submodule_search_locations = [str(location)]
+    sys.modules[name] = importlib.util.module_from_spec(spec)
+
+
 def _import_public_controlfoley(source_dir: Path):
     _ensure_public_controlfoley_repo(source_dir)
     source_text = str(source_dir)
@@ -787,6 +821,8 @@ def _import_public_controlfoley(source_dir: Path):
     for entry in [source_text, lib_text]:
         if entry not in sys.path:
             sys.path.insert(0, entry)
+    _bind_package_name("controlfoley", source_dir / "controlfoley")
+    _bind_package_name("lib", source_dir / "lib")
     inference_utils = importlib.import_module("controlfoley.inference_utils")
     audio_model = importlib.import_module("controlfoley.audio_model")
     feature_extractor = importlib.import_module("controlfoley.feature_extractor")
